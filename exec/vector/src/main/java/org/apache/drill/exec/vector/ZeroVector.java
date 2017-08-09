@@ -166,4 +166,9 @@ public class ZeroVector implements ValueVector {
 
   @Override
   public int getPayloadByteCount(int valueCount) { return 0; }
+
+  @Override
+  public void toNullable(ValueVector nullableVector) {
+    throw new UnsupportedOperationException();
+  }
 }
