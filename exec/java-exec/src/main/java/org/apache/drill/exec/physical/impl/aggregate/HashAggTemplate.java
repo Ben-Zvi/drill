@@ -60,13 +60,12 @@ import org.apache.drill.exec.physical.impl.spill.RecordBatchSizer;
 import org.apache.drill.exec.physical.impl.spill.SpillSet;
 import org.apache.drill.exec.planner.physical.AggPrelBase;
 
-import org.apache.drill.exec.proto.UserBitShared;
-
 import org.apache.drill.exec.record.MaterializedField;
 
 import org.apache.drill.exec.record.RecordBatch;
 import org.apache.drill.exec.record.BatchSchema;
 
+import org.apache.drill.exec.record.TransferPair;
 import org.apache.drill.exec.record.VectorContainer;
 
 import org.apache.drill.exec.record.TypedFieldId;
@@ -75,13 +74,12 @@ import org.apache.drill.exec.record.RecordBatch.IterOutcome;
 import org.apache.drill.exec.record.VectorWrapper;
 import org.apache.drill.exec.record.WritableBatch;
 
-import org.apache.drill.exec.vector.AllocationHelper;
-
 import org.apache.drill.exec.vector.FixedWidthVector;
 import org.apache.drill.exec.vector.ObjectVector;
 import org.apache.drill.exec.vector.ValueVector;
 
 import org.apache.drill.exec.vector.VariableWidthVector;
+import org.apache.hadoop.ipc.RetriableException;
 
 import static org.apache.drill.exec.record.RecordBatch.MAX_BATCH_SIZE;
 
@@ -196,7 +194,6 @@ public abstract class HashAggTemplate implements HashAggregator {
 
     private VectorContainer aggrValuesContainer; // container for aggr values (workspace variables)
     private int maxOccupiedIdx = -1;
-    private int batchOutputCount = 0;
 
     private int capacity = Integer.MAX_VALUE;
 
@@ -254,20 +251,6 @@ public abstract class HashAggTemplate implements HashAggregator {
       catch (SchemaChangeException sc) { throw new UnsupportedOperationException(sc);}
     }
 
-    private void outputValues(IndexPointer outStartIdxHolder, IndexPointer outNumRecordsHolder) {
-      outStartIdxHolder.value = batchOutputCount;
-      outNumRecordsHolder.value = 0;
-      for (int i = batchOutputCount; i <= maxOccupiedIdx; i++) {
-        try { outputRecordValues(i, batchOutputCount); }
-        catch (SchemaChangeException sc) { throw new UnsupportedOperationException(sc);}
-        if (EXTRA_DEBUG_2) {
-          logger.debug("Outputting values to output index: {}", batchOutputCount);
-        }
-        batchOutputCount++;
-        outNumRecordsHolder.value++;
-      }
-    }
-
     private void clear() {
       aggrValuesContainer.clear();
     }
@@ -277,7 +260,7 @@ public abstract class HashAggTemplate implements HashAggregator {
     }
 
     private int getNumPendingOutput() {
-      return getNumGroups() - batchOutputCount;
+      return getNumGroups();
     }
 
     // Code-generated methods (implemented in HashAggBatch)
@@ -633,23 +616,52 @@ public abstract class HashAggTemplate implements HashAggregator {
   }
 
   /**
-   *   Allocate space for the returned aggregate columns
-   *   (Note DRILL-5588: Maybe can eliminate this allocation (and copy))
-   * @param records
+   *   Transfer the returned aggregate values columns and key columns
+   *   into the Outcontainer
+   *
+   * @param part
+   * @param currOutBatchIndex
    */
-  private void allocateOutgoing(int records) {
-    // Skip the keys and only allocate for outputting the workspace values
-    // (keys will be output through splitAndTransfer)
+  private int transferValuesAndKeysToOutContainer(int part, int currOutBatchIndex) {
+    // Skip the keys and transfer the workspace values
+    // (keys will be output in outputKeys() through splitAndTransfer)
+    BatchHolder valuesBH = batchHolders[part].get(currOutBatchIndex);
+    // get the number of records in the batch holder that are pending output
+    int numPendingOutput = valuesBH.getNumPendingOutput();
     Iterator<VectorWrapper<?>> outgoingIter = outContainer.iterator();
     for (int i = 0; i < numGroupByOutFields; i++) {
       outgoingIter.next();
     }
+    Iterator<VectorWrapper<?>> valuesIterator = valuesBH.aggrValuesContainer.iterator();
     while (outgoingIter.hasNext()) {
       @SuppressWarnings("resource")
-      ValueVector vv = outgoingIter.next().getValueVector();
-
-      AllocationHelper.allocatePrecomputedChildCount(vv, records, maxColumnWidth, 0);
+      ValueVector targetVV = outgoingIter.next().getValueVector();
+      ValueVector sourceVV = valuesIterator.next().getValueVector();
+      TransferPair tp = sourceVV.makeTransferPair(targetVV);
+      tp.transfer();
     }
+    //
+    htables[part].outputKeys(currOutBatchIndex, this.outContainer, 0, numPendingOutput, numPendingOutput);
+
+    // set the value count for outgoing batch value vectors
+    /* int i = 0; */
+    for (VectorWrapper<?> v : outgoing) {
+      v.getValueVector().getMutator().setValueCount(numPendingOutput);
+      /*
+        // print out the first row to be spilled ( varchar, varchar, bigint )
+        try {
+          if (i++ < 2) {
+            NullableVarCharVector vv = ((NullableVarCharVector) v.getValueVector());
+            logger.info("FIRST ROW = {}", vv.getAccessor().get(0));
+          } else {
+            NullableBigIntVector vv = ((NullableBigIntVector) v.getValueVector());
+            logger.info("FIRST ROW = {}", vv.getAccessor().get(0));
+          }
+        } catch (Exception e) { logger.info("While printing the first row - Got an exception = {}",e); }
+      */
+    }
+    outContainer.setRecordCount(numPendingOutput);
+    return numPendingOutput;
   }
 
   @Override
@@ -828,41 +840,15 @@ public abstract class HashAggTemplate implements HashAggregator {
       }
     }
 
+    // Go thru the batches and spill each batch
     for (int currOutBatchIndex = 0; currOutBatchIndex < currPartition.size(); currOutBatchIndex++ ) {
 
-      // get the number of records in the batch holder that are pending output
-      int numPendingOutput = currPartition.get(currOutBatchIndex).getNumPendingOutput();
+      int numOutputRecords = transferValuesAndKeysToOutContainer(part, currOutBatchIndex);
 
-      rowsInPartition += numPendingOutput;  // for logging
-      rowsSpilled += numPendingOutput;
+      rowsInPartition += numOutputRecords;  // for logging
+      rowsSpilled += numOutputRecords;
 
-      allocateOutgoing(numPendingOutput);
-
-      currPartition.get(currOutBatchIndex).outputValues(outStartIdxHolder, outNumRecordsHolder);
-      int numOutputRecords = outNumRecordsHolder.value;
-
-      this.htables[part].outputKeys(currOutBatchIndex, this.outContainer, outStartIdxHolder.value, outNumRecordsHolder.value, numPendingOutput);
-
-      // set the value count for outgoing batch value vectors
-      /* int i = 0; */
-      for (VectorWrapper<?> v : outgoing) {
-        v.getValueVector().getMutator().setValueCount(numOutputRecords);
-        /*
-        // print out the first row to be spilled ( varchar, varchar, bigint )
-        try {
-          if (i++ < 2) {
-            NullableVarCharVector vv = ((NullableVarCharVector) v.getValueVector());
-            logger.info("FIRST ROW = {}", vv.getAccessor().get(0));
-          } else {
-            NullableBigIntVector vv = ((NullableBigIntVector) v.getValueVector());
-            logger.info("FIRST ROW = {}", vv.getAccessor().get(0));
-          }
-        } catch (Exception e) { logger.info("While printing the first row - Got an exception = {}",e); }
-        */
-      }
-
-      outContainer.setRecordCount(numPendingOutput);
-      WritableBatch batch = WritableBatch.getBatchNoHVWrap(numPendingOutput, outContainer, false);
+      WritableBatch batch = WritableBatch.getBatchNoHVWrap(numOutputRecords, outContainer, false);
       VectorAccessibleSerializable outputBatch = new VectorAccessibleSerializable(batch, allocator);
       Stopwatch watch = Stopwatch.createStarted();
       try {
@@ -873,7 +859,7 @@ public abstract class HashAggTemplate implements HashAggregator {
             .build(logger);
       }
       outContainer.zeroVectors();
-      logger.trace("HASH AGG: Took {} us to spill {} records", watch.elapsed(TimeUnit.MICROSECONDS), numPendingOutput);
+      logger.trace("HASH AGG: Took {} us to spill {} records", watch.elapsed(TimeUnit.MICROSECONDS), numOutputRecords);
     }
 
     spilledBatchesCount[part] += currPartition.size(); // update count of spilled batches
@@ -1005,30 +991,13 @@ public abstract class HashAggTemplate implements HashAggregator {
 
     }
 
-    // get the number of records in the batch holder that are pending output
-    int numPendingOutput = currPartition.get(currOutBatchIndex).getNumPendingOutput();
+    int numOutputRecords = transferValuesAndKeysToOutContainer(partitionToReturn, currOutBatchIndex);
 
     // The following accounting is for logging, metrics, etc.
-    rowsInPartition += numPendingOutput ;
-    if ( ! handlingSpills ) { rowsNotSpilled += numPendingOutput; }
-    else { rowsSpilledReturned += numPendingOutput; }
-    if ( earlyOutput ) { rowsReturnedEarly += numPendingOutput; }
-
-    allocateOutgoing(numPendingOutput);
-
-    currPartition.get(currOutBatchIndex).outputValues(outStartIdxHolder, outNumRecordsHolder);
-    int numOutputRecords = outNumRecordsHolder.value;
-
-    if (EXTRA_DEBUG_1) {
-      logger.debug("After output values: outStartIdx = {}, outNumRecords = {}", outStartIdxHolder.value, outNumRecordsHolder.value);
-    }
-
-    this.htables[partitionToReturn].outputKeys(currOutBatchIndex, this.outContainer, outStartIdxHolder.value, outNumRecordsHolder.value, numPendingOutput);
-
-    // set the value count for outgoing batch value vectors
-    for (VectorWrapper<?> v : outgoing) {
-      v.getValueVector().getMutator().setValueCount(numOutputRecords);
-    }
+    rowsInPartition += numOutputRecords ;
+    if ( ! handlingSpills ) { rowsNotSpilled += numOutputRecords; }
+    else { rowsSpilledReturned += numOutputRecords; }
+    if ( earlyOutput ) { rowsReturnedEarly += numOutputRecords; }
 
     this.outcome = IterOutcome.OK;
 
@@ -1169,14 +1138,29 @@ public abstract class HashAggTemplate implements HashAggregator {
     // ==========================================
     // Insert the key columns into the hash table
     // ==========================================
-    try {
-      putStatus = htables[currentPartition].put(incomingRowIdx, htIdxHolder, hashCode);
-    } catch (OutOfMemoryException exc) {
-      throw new OutOfMemoryException(getOOMErrorMsg("HT was: " + allocatedBeforeHTput), exc); // may happen when can not spill
-    } catch (SchemaChangeException e) {
-      throw new UnsupportedOperationException("Unexpected schema change", e);
-    }
+    while ( putStatus == null ) {
+      try {
+        putStatus = htables[currentPartition].put(incomingRowIdx, htIdxHolder, hashCode);
+      } catch (RetriableException re) {
+        // Pick a "victim" partition to spill
+        int victimPartition = chooseAPartitionToFlush(currentPartition);
 
+        if (victimPartition < 0 || !is2ndPhase) {
+          throw new OutOfMemoryException(getOOMErrorMsg("HT put cannot retry. "), re);
+        }
+        logger.warn("HT put failed with an OOM, trying to spill partition {} and call put() again",victimPartition);
+
+        spillAPartition(victimPartition);
+
+        // Re-initialize (free memory, then recreate) the partition just spilled/returned
+        reinitPartition(victimPartition);
+        continue; // retry put()
+      } catch (OutOfMemoryException exc) {
+        throw new OutOfMemoryException(getOOMErrorMsg("HT was: " + allocatedBeforeHTput), exc); // may happen when can not spill
+      } catch (SchemaChangeException e) {
+        throw new UnsupportedOperationException("Unexpected schema change", e);
+      }
+    }
     boolean needToCheckIfSpillIsNeeded = false;
     long allocatedBeforeAggCol = allocator.getAllocatedMemory();
 

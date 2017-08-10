@@ -22,9 +22,11 @@ import java.util.Iterator;
 
 import javax.inject.Named;
 
+import org.apache.drill.common.exceptions.UserException;
 import org.apache.drill.common.types.TypeProtos.MinorType;
 import org.apache.drill.common.types.Types;
 import org.apache.drill.exec.compile.sig.RuntimeOverridden;
+import org.apache.drill.exec.exception.OutOfMemoryException;
 import org.apache.drill.exec.exception.SchemaChangeException;
 import org.apache.drill.exec.expr.TypeHelper;
 import org.apache.drill.exec.memory.BufferAllocator;
@@ -39,6 +41,7 @@ import org.apache.drill.exec.vector.FixedWidthVector;
 import org.apache.drill.exec.vector.IntVector;
 import org.apache.drill.exec.vector.ValueVector;
 import org.apache.drill.exec.vector.VariableWidthVector;
+import org.apache.hadoop.ipc.RetriableException;
 
 public abstract class HashTableTemplate implements HashTable {
 
@@ -583,7 +586,7 @@ public abstract class HashTableTemplate implements HashTable {
    * @return Status - the key(s) was ADDED or was already PRESENT
    */
   @Override
-  public PutStatus put(int incomingRowIdx, IndexPointer htIdxHolder, int hashCode) throws SchemaChangeException {
+  public PutStatus put(int incomingRowIdx, IndexPointer htIdxHolder, int hashCode) throws SchemaChangeException, RetriableException {
 
     int bucketIndex = getBucketIndex(hashCode, numBuckets());
     int startIdx = startIndices.getAccessor().get(bucketIndex);
@@ -609,8 +612,13 @@ public abstract class HashTableTemplate implements HashTable {
 
     // no match was found, so insert a new entry
     currentIdx = freeIndex++;
-    boolean addedBatch = addBatchIfNeeded(currentIdx);
-
+    boolean addedBatch;
+    try {
+      addedBatch = addBatchIfNeeded(currentIdx);
+    } catch (OutOfMemoryException OOME) {
+      freeIndex--;
+      throw new RetriableException("");
+    }
     if (EXTRA_DEBUG) {
       logger.debug("No match was found for incomingRowIdx = {}; inserting new entry at currentIdx = {}.", incomingRowIdx, currentIdx);
     }
