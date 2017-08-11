@@ -144,6 +144,7 @@ public abstract class BaseValueVector implements ValueVector {
     for (int i = 0; i < valueCount; i++) {
       bitsMutator.set(i, 1);
     }
+    bitsMutator.setValueCount(valueCount);
   }
 
   @Override

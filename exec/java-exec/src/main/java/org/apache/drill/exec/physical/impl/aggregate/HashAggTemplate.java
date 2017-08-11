@@ -616,31 +616,38 @@ public abstract class HashAggTemplate implements HashAggregator {
   }
 
   /**
-   *   Transfer the returned aggregate values columns and key columns
+   *   Transfer the returned aggregate value columns and key columns
    *   into the Outcontainer
    *
    * @param part
    * @param currOutBatchIndex
    */
   private int transferValuesAndKeysToOutContainer(int part, int currOutBatchIndex) {
-    // Skip the keys and transfer the workspace values
-    // (keys will be output in outputKeys() through splitAndTransfer)
     BatchHolder valuesBH = batchHolders[part].get(currOutBatchIndex);
     // get the number of records in the batch holder that are pending output
     int numPendingOutput = valuesBH.getNumPendingOutput();
     Iterator<VectorWrapper<?>> outgoingIter = outContainer.iterator();
+    // Skip the keys (keys will be output later by outputKeys() )
     for (int i = 0; i < numGroupByOutFields; i++) {
       outgoingIter.next();
     }
     Iterator<VectorWrapper<?>> valuesIterator = valuesBH.aggrValuesContainer.iterator();
+    // Output the value columns
     while (outgoingIter.hasNext()) {
       @SuppressWarnings("resource")
       ValueVector targetVV = outgoingIter.next().getValueVector();
       ValueVector sourceVV = valuesIterator.next().getValueVector();
-      TransferPair tp = sourceVV.makeTransferPair(targetVV);
-      tp.transfer();
+      // If special case: Source is not-nullable, target is nullable
+      // then use toNullable() (which allocates a new bits vector; hopefully no OOM)
+      if ( ! sourceVV.getField().isNullable() && targetVV.getField().isNullable() ) {
+        sourceVV.getMutator().setValueCount(numPendingOutput);
+        sourceVV.toNullable(targetVV);
+      } else { // both have same "nullability" -- just transfer
+        TransferPair tp = sourceVV.makeTransferPair(targetVV);
+        tp.transfer();
+      }
     }
-    //
+    // Now output the key columns
     htables[part].outputKeys(currOutBatchIndex, this.outContainer, 0, numPendingOutput, numPendingOutput);
 
     // set the value count for outgoing batch value vectors
