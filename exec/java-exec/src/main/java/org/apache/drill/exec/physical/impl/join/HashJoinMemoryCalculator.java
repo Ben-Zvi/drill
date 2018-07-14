@@ -103,6 +103,8 @@ public interface HashJoinMemoryCalculator extends HashJoinStateCalculator<HashJo
                     int outputBatchSize,
                     double loadFactor);
 
+    void updateWithProbe(RecordBatch probeSideBatch);
+
     void setPartitionStatSet(PartitionStatSet partitionStatSet);
 
     int getNumPartitions();

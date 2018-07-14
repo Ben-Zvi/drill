@@ -148,6 +148,11 @@ public class HashJoinMemoryCalculatorImpl implements HashJoinMemoryCalculator {
     }
 
     @Override
+    public void updateWithProbe(RecordBatch probeSideBatch) {
+
+    }
+
+    @Override
     public void setPartitionStatSet(PartitionStatSet partitionStatSet) {
       // Do nothing
     }
@@ -275,21 +280,21 @@ public class HashJoinMemoryCalculatorImpl implements HashJoinMemoryCalculator {
                            int outputBatchSize,
                            double loadFactor) {
       Preconditions.checkNotNull(buildSideBatch);
-      Preconditions.checkNotNull(probeSideBatch);
+      // Preconditions.checkNotNull(probeSideBatch);
       Preconditions.checkNotNull(joinColumns);
 
       final RecordBatchSizer buildSizer = new RecordBatchSizer(buildSideBatch);
-      final RecordBatchSizer probeSizer = new RecordBatchSizer(probeSideBatch);
+      final RecordBatchSizer probeSizer = probeSideBatch == null ? null : new RecordBatchSizer(probeSideBatch);
 
       long buildBatchSize = getBatchSizeEstimate(buildSideBatch);
-      long probeBatchSize = getBatchSizeEstimate(probeSideBatch);
+      long probeBatchSize = probeSideBatch == null ? 0 : getBatchSizeEstimate(probeSideBatch);
 
       int buildNumRecords = buildSizer.rowCount();
-      int probeNumRecords = probeSizer.rowCount();
+      int probeNumRecords = probeSideBatch == null ? 0 : probeSizer.rowCount();
 
       final CaseInsensitiveMap<Long> buildValueSizes = getNotExcludedColumnSizes(
         joinColumns, buildSizer);
-      final CaseInsensitiveMap<Long> probeValueSizes = getNotExcludedColumnSizes(
+      final CaseInsensitiveMap<Long> probeValueSizes = probeSideBatch == null ? null : getNotExcludedColumnSizes(
         joinColumns, probeSizer);
       final CaseInsensitiveMap<Long> keySizes = CaseInsensitiveMap.newHashMap();
 
@@ -314,6 +319,25 @@ public class HashJoinMemoryCalculatorImpl implements HashJoinMemoryCalculator {
         outputBatchSize,
         loadFactor);
     }
+
+    @Override
+    public void updateWithProbe(RecordBatch probeSideBatch) {
+      Preconditions.checkNotNull(probeSideBatch);
+
+      final RecordBatchSizer probeSizer = new RecordBatchSizer(probeSideBatch);
+
+      long probeBatchSize = getBatchSizeEstimate(probeSideBatch);
+
+      int probeNumRecords = probeSizer.rowCount();
+
+      this.probeBatchSize = probeBatchSize;
+      this.probeNumRecords = probeNumRecords;
+
+      calculateMemoryUsage(); // recalculate, now with real probe data
+
+      log.debug("Finished recalculating memory usage");
+    }
+
 
     @VisibleForTesting
     protected static CaseInsensitiveMap<Long> getNotExcludedColumnSizes(

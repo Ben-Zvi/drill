@@ -83,6 +83,10 @@ public class HashJoinMechanicalMemoryCalculator implements HashJoinMemoryCalcula
     }
 
     @Override
+    public void updateWithProbe(RecordBatch probeSideBatch) {
+    }
+
+    @Override
     public void setPartitionStatSet(PartitionStatSet partitionStatSet) {
       this.partitionStatSet = Preconditions.checkNotNull(partitionStatSet);
     }

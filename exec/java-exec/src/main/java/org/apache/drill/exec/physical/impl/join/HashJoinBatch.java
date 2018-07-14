@@ -98,6 +98,8 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
 
   // Join type, INNER, LEFT, RIGHT or OUTER
   private final JoinRelType joinType;
+  private boolean joinIsLeftOrFull;
+  private boolean joinIsRightOrFull;
 
   // Join conditions
   private final List<JoinCondition> conditions;
@@ -217,6 +219,13 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
       return;
     }
 
+    // Get the probe side schema
+    probeSchema = probeBatch.getSchema();
+    // Get the schema of the build side (even when the build side is empty)
+    rightSchema = buildBatch.getSchema();
+    // position of the new "column" for keeping the hash values (after the real columns)
+    rightHVColPosition = buildBatch.getContainer().getNumberOfColumns();
+
     // Initialize the hash join helper context
     if (rightUpstream != IterOutcome.NONE) {
       setupHashTable();
@@ -229,72 +238,6 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
     }
 
     container.buildSchema(BatchSchema.SelectionVectorMode.NONE);
-  }
-
-  @Override
-  protected boolean prefetchFirstBatchFromBothSides() {
-    leftUpstream = sniffNonEmptyBatch(0, left);
-    rightUpstream = sniffNonEmptyBatch(1, right);
-
-    // For build side, use aggregate i.e. average row width across batches
-    batchMemoryManager.update(LEFT_INDEX, 0);
-    batchMemoryManager.update(RIGHT_INDEX, 0, true);
-
-    logger.debug("BATCH_STATS, incoming left: {}", batchMemoryManager.getRecordBatchSizer(LEFT_INDEX));
-    logger.debug("BATCH_STATS, incoming right: {}", batchMemoryManager.getRecordBatchSizer(RIGHT_INDEX));
-
-    if (leftUpstream == IterOutcome.STOP || rightUpstream == IterOutcome.STOP) {
-      state = BatchState.STOP;
-      return false;
-    }
-
-    if (leftUpstream == IterOutcome.OUT_OF_MEMORY || rightUpstream == IterOutcome.OUT_OF_MEMORY) {
-      state = BatchState.OUT_OF_MEMORY;
-      return false;
-    }
-
-    if (checkForEarlyFinish(leftUpstream, rightUpstream)) {
-      state = BatchState.DONE;
-      return false;
-    }
-
-    state = BatchState.FIRST;  // Got our first batches on both sides
-    return true;
-  }
-
-  /**
-   * Currently in order to accurately predict memory usage for spilling, the first non-empty build side and probe side batches are needed. This method
-   * fetches the first non-empty batch from the left or right side.
-   * @param inputIndex Index specifying whether to work with the left or right input.
-   * @param recordBatch The left or right record batch.
-   * @return The {@link org.apache.drill.exec.record.RecordBatch.IterOutcome} for the left or right record batch.
-   */
-  private IterOutcome sniffNonEmptyBatch(int inputIndex, RecordBatch recordBatch) {
-    while (true) {
-      IterOutcome outcome = next(inputIndex, recordBatch);
-
-      switch (outcome) {
-        case OK_NEW_SCHEMA:
-          if ( inputIndex == 0 ) {
-            // Indicate that a schema was seen (in case probe side is empty)
-            probeSchema = probeBatch.getSchema();
-          } else {
-            // We need to have the schema of the build side even when the build side is empty
-            rightSchema = buildBatch.getSchema();
-            // position of the new "column" for keeping the hash values (after the real columns)
-            rightHVColPosition = buildBatch.getContainer().getNumberOfColumns();
-            // new schema can also contain records
-          }
-        case OK:
-          if (recordBatch.getRecordCount() == 0) {
-            continue;
-          }
-          // We got a non empty batch
-        default:
-          // Other cases termination conditions
-          return outcome;
-      }
-    }
   }
 
   /**
@@ -333,13 +276,25 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
         executeBuildPhase();
         // Update the hash table related stats for the operator
         updateStats();
+        // In case (early sniffing in) the build phase hit a STOP
+        if ( leftUpstream == IterOutcome.STOP || rightUpstream == IterOutcome.STOP) {
+          state = BatchState.DONE;
+          this.cleanup();
+          return IterOutcome.STOP;
+        }
+        if ( leftUpstream == IterOutcome.NONE &&
+          ( buildSideIsEmpty || ! joinIsRightOrFull ) ) {
+          state = BatchState.DONE;
+          this.cleanup();
+          return IterOutcome.NONE;
+        }
         // Initialize various settings for the probe side
         hashJoinProbe.setupHashJoinProbe(probeBatch, this, joinType, leftUpstream, partitions, cycleNum, container, spilledInners, buildSideIsEmpty, numPartitions, rightHVColPosition);
       }
 
       // Try to probe and project, or recursively handle a spilled partition
       if ( ! buildSideIsEmpty ||  // If there are build-side rows
-           joinType != JoinRelType.INNER) {  // or if this is a left/full outer join
+           joinIsLeftOrFull ) {  // or if this is a left/full outer join
 
         // Allocate the memory for the vectors in the output container
         batchMemoryManager.allocateVectors(container);
@@ -609,20 +564,48 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
   }
 
   /**
+   * At the first time reading one side incoming -- Keep fetching incoming
+   * batches till the first non-empty batch is seen; then update the memory manager
+   */
+  private IterOutcome sniffAndUpdateMemoryManager(int index,
+                                                  RecordBatch incomingBatch,
+                                                  IterOutcome incomingOutcome) {
+    IterOutcome result = incomingOutcome;
+    if ( cycleNum > 0 ) { return result; } // not first time
+    while ( result != IterOutcome.NONE ) {
+      if ( incomingBatch.getRecordCount() > 0) { break; } // found first non-empty
+      result = next(index == LEFT_INDEX ? 0 : 1, incomingBatch); // get the next batch
+      if ( result == IterOutcome.STOP ) { return result; } // need to STOP !
+    }
+    batchMemoryManager.update(index, 0);
+    logger.debug("BATCH_STATS, incoming {}: {}", index == LEFT_INDEX ? "left" : "right",
+      batchMemoryManager.getRecordBatchSizer(index));
+    return result;
+  }
+  /**
    *  Execute the BUILD phase; first read incoming and split rows into partitions;
    *  may decide to spill some of the partitions
    *
    * @throws SchemaChangeException
    */
   public void executeBuildPhase() throws SchemaChangeException {
-    if (rightUpstream == IterOutcome.NONE) {
-      // empty right
-      return;
+
+    rightUpstream = sniffAndUpdateMemoryManager(RIGHT_INDEX, buildBatch, rightUpstream);
+
+    // Handle empty/bad right side and return
+    switch (rightUpstream) {
+      case NONE: // empty right
+        if ( joinIsLeftOrFull ) { // check the left
+          leftUpstream = sniffAndUpdateMemoryManager(LEFT_INDEX, probeBatch, leftUpstream);
+        }
+      case STOP:
+      case NOT_YET:
+      case OUT_OF_MEMORY:
+        return;
     }
 
     HashJoinMemoryCalculator.BuildSidePartitioning buildCalc;
     boolean firstCycle = cycleNum == 0;
-
     {
       // Initializing build calculator
       // Limit scope of these variables to this block
@@ -634,10 +617,10 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
       calc.initialize(doMemoryCalculation);
       buildCalc = calc.next();
 
-      // We've sniffed first non empty build and probe batches so we have enough information to create a calculator
+      // We've sniffed first non empty build batch so we have enough information to create a calculator
       buildCalc.initialize(firstCycle, true, // TODO Fix after growing hash values bug fixed
         buildBatch,
-        probeBatch,
+        null, // probeBatch will be added later, meantime use zero values
         buildJoinColumns,
         allocator.getLimit(),
         numPartitions,
@@ -724,6 +707,19 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
       }
     }
 
+    leftUpstream = sniffAndUpdateMemoryManager(LEFT_INDEX, probeBatch, leftUpstream);
+
+    switch ( leftUpstream ) {
+      case OK_NEW_SCHEMA:
+      case OK:
+        // We've sniffed the first non empty probe batch, now update the calculator
+        buildCalc.updateWithProbe(probeBatch);
+      case NONE:
+        break; // empty left, but may be a right outer join
+      default:
+        return;
+    }
+
     HashJoinMemoryCalculator.PostBuildCalculations postBuildCalc = buildCalc.next();
     postBuildCalc.initialize();
 
@@ -784,7 +780,7 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
         final MajorType outputType;
         // If left or full outer join, then the output type must be nullable. However, map types are
         // not nullable so we must exclude them from the check below (see DRILL-2197).
-        if ((joinType == JoinRelType.LEFT || joinType == JoinRelType.FULL) && inputType.getMode() == DataMode.REQUIRED
+        if ( joinIsLeftOrFull && inputType.getMode() == DataMode.REQUIRED
             && inputType.getMinorType() != TypeProtos.MinorType.MAP) {
           outputType = Types.overrideMode(inputType, DataMode.OPTIONAL);
         } else {
@@ -805,7 +801,7 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
 
         // If right or full outer join then the output type should be optional. However, map types are
         // not nullable so we must exclude them from the check below (see DRILL-2771, DRILL-2197).
-        if ((joinType == JoinRelType.RIGHT || joinType == JoinRelType.FULL) && inputType.getMode() == DataMode.REQUIRED
+        if ( joinIsRightOrFull && inputType.getMode() == DataMode.REQUIRED
             && inputType.getMinorType() != TypeProtos.MinorType.MAP) {
           outputType = Types.overrideMode(inputType, DataMode.OPTIONAL);
         } else {
@@ -845,6 +841,8 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
     this.buildBatch = right;
     this.probeBatch = left;
     joinType = popConfig.getJoinType();
+    joinIsLeftOrFull  = joinType == JoinRelType.LEFT  || joinType == JoinRelType.FULL;
+    joinIsRightOrFull = joinType == JoinRelType.RIGHT || joinType == JoinRelType.FULL;
     conditions = popConfig.getConditions();
     this.popConfig = popConfig;
 

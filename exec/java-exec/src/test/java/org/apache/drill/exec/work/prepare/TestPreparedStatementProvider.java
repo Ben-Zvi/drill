@@ -106,6 +106,28 @@ public class TestPreparedStatementProvider extends PreparedStatementTestBase {
   }
 
   /**
+   * Create a prepared statement for a query that joins two sub-queries with limit 0 each
+   * and has ORDER BY clause and limit 0. (see DRILL-6606)
+   */
+  @Test
+  public void joinOrderByQuerySubQueryLimit0() throws Exception {
+    String query = "SELECT l.l_quantity, l.l_shipdate, o.o_custkey\n" +
+      "FROM (SELECT * FROM cp.`tpch/lineitem.parquet` LIMIT 0) l\n" +
+      "    JOIN (SELECT * FROM cp.`tpch/orders.parquet` LIMIT 0) o \n" +
+      "    ON l.l_orderkey = o.o_orderkey\n" + "LIMIT 0";
+
+    PreparedStatement preparedStatement = createPrepareStmt(query, false, null);
+
+    List<ExpectedColumnResult> expMetadata = ImmutableList.of(
+      new ExpectedColumnResult("l_quantity", "DOUBLE", false, 24, 0, 0, true, Double.class.getName()),
+      new ExpectedColumnResult("l_shipdate", "DATE", false, 10, 0, 0, false, Date.class.getName()),
+      new ExpectedColumnResult("o_custkey", "INTEGER", false, 11, 0, 0, true, Integer.class.getName())
+    );
+
+    verifyMetadata(expMetadata, preparedStatement.getColumnsList());
+  }
+
+  /**
    * Pass an invalid query to the create prepare statement request and expect a parser failure.
    * @throws Exception
    */
