@@ -83,7 +83,7 @@ public class HashJoinMechanicalMemoryCalculator implements HashJoinMemoryCalcula
     }
 
     @Override
-    public void updateWithProbe(RecordBatch probeSideBatch) {
+    public void updateWithProbe(RecordBatch probeSideBatch, long outputBatchSize) {
     }
 
     @Override
@@ -140,6 +140,7 @@ public class HashJoinMechanicalMemoryCalculator implements HashJoinMemoryCalcula
 
     @Override
     public void initialize() {
+    //public void initialize(RecordBatch probeSideBatch, long maxOutputBatchSize) {
       // Do nothing
     }
 

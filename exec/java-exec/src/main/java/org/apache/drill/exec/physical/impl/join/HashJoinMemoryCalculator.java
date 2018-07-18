@@ -103,7 +103,7 @@ public interface HashJoinMemoryCalculator extends HashJoinStateCalculator<HashJo
                     int outputBatchSize,
                     double loadFactor);
 
-    void updateWithProbe(RecordBatch probeSideBatch);
+    void updateWithProbe(RecordBatch probeSideBatch, long outputBatchSize);
 
     void setPartitionStatSet(PartitionStatSet partitionStatSet);
 
@@ -123,6 +123,7 @@ public interface HashJoinMemoryCalculator extends HashJoinStateCalculator<HashJo
    * {@link HashJoinState#POST_BUILD_CALCULATIONS} state.
    */
   interface PostBuildCalculations extends HashJoinStateCalculator<HashJoinMemoryCalculator> {
+    // void initialize(RecordBatch probeSideBatch, long maxOutputBatchSize);
     void initialize();
 
     boolean shouldSpill();

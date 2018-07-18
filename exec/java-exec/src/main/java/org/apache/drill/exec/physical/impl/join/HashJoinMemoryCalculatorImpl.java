@@ -148,7 +148,7 @@ public class HashJoinMemoryCalculatorImpl implements HashJoinMemoryCalculator {
     }
 
     @Override
-    public void updateWithProbe(RecordBatch probeSideBatch) {
+    public void updateWithProbe(RecordBatch probeSideBatch, long outputBatchSize) {
 
     }
 
@@ -321,7 +321,7 @@ public class HashJoinMemoryCalculatorImpl implements HashJoinMemoryCalculator {
     }
 
     @Override
-    public void updateWithProbe(RecordBatch probeSideBatch) {
+    public void updateWithProbe(RecordBatch probeSideBatch, long outputBatchSize) {
       Preconditions.checkNotNull(probeSideBatch);
 
       final RecordBatchSizer probeSizer = new RecordBatchSizer(probeSideBatch);
@@ -332,6 +332,7 @@ public class HashJoinMemoryCalculatorImpl implements HashJoinMemoryCalculator {
 
       this.probeBatchSize = probeBatchSize;
       this.probeNumRecords = probeNumRecords;
+      this.maxOutputBatchSize = outputBatchSize;
 
       calculateMemoryUsage(); // recalculate, now with real probe data
 

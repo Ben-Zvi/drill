@@ -594,6 +594,14 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
 
     // Handle empty/bad right side and return
     switch (rightUpstream) {
+      case OK_NEW_SCHEMA:
+        if ( probeBatch.getRecordCount() > 0 ) {
+          // No need to call next() to get sizing based on actual data
+          leftUpstream = sniffAndUpdateMemoryManager(LEFT_INDEX, probeBatch, leftUpstream);
+        }
+        // Else - perform this sniffing later, after all the Build side was read
+        //    in order to avoid deadlocks (see DRILL-6453)
+        break;
       case NONE: // empty right
         if ( joinIsLeftOrFull ) { // check the left
           leftUpstream = sniffAndUpdateMemoryManager(LEFT_INDEX, probeBatch, leftUpstream);
@@ -707,17 +715,21 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
       }
     }
 
-    leftUpstream = sniffAndUpdateMemoryManager(LEFT_INDEX, probeBatch, leftUpstream);
+    // If the first probe batch had no rows - need to sniff further into the Probe side
+    // to get sizing information based on actual data
+    if ( leftUpstream == IterOutcome.OK_NEW_SCHEMA && probeBatch.getRecordCount() == 0 ) {
 
-    switch ( leftUpstream ) {
-      case OK_NEW_SCHEMA:
-      case OK:
-        // We've sniffed the first non empty probe batch, now update the calculator
-        buildCalc.updateWithProbe(probeBatch);
-      case NONE:
-        break; // empty left, but may be a right outer join
-      default:
-        return;
+      leftUpstream = sniffAndUpdateMemoryManager(LEFT_INDEX, probeBatch, leftUpstream);
+
+      switch (leftUpstream) {
+        case OK_NEW_SCHEMA:
+        case OK:
+          buildCalc.updateWithProbe(probeBatch, batchMemoryManager.getOutputBatchSize());
+        case NONE:
+          break; // empty left, but may be a right outer join
+        default:
+          return;
+      }
     }
 
     HashJoinMemoryCalculator.PostBuildCalculations postBuildCalc = buildCalc.next();
