@@ -573,11 +573,13 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
     IterOutcome result = incomingOutcome;
     if ( cycleNum > 0 ) { return result; } // not first time
     while ( result != IterOutcome.NONE ) {
-      if ( incomingBatch.getRecordCount() > 0) { break; } // found first non-empty
+      if ( incomingBatch.getRecordCount() > 0) { // found first non-empty
+        batchMemoryManager.update(index, 0);
+        break;
+      }
       result = next(index == LEFT_INDEX ? 0 : 1, incomingBatch); // get the next batch
       if ( result == IterOutcome.STOP ) { return result; } // need to STOP !
     }
-    batchMemoryManager.update(index, 0);
     logger.debug("BATCH_STATS, incoming {}: {}", index == LEFT_INDEX ? "left" : "right",
       batchMemoryManager.getRecordBatchSizer(index));
     return result;
@@ -594,6 +596,7 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
 
     // Handle empty/bad right side and return
     switch (rightUpstream) {
+      case OK: // in case the first right OK_NEW_SCHEMA had no rows
       case OK_NEW_SCHEMA:
         if ( probeBatch.getRecordCount() > 0 ) {
           // No need to call next() to get sizing based on actual data
