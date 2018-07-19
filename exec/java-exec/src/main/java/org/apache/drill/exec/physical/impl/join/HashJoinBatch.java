@@ -573,8 +573,8 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
     IterOutcome result = incomingOutcome;
     if ( cycleNum > 0 ) { return result; } // not first time
     while ( result != IterOutcome.NONE ) {
+      batchMemoryManager.update(index, 0);
       if ( incomingBatch.getRecordCount() > 0) { // found first non-empty
-        batchMemoryManager.update(index, 0);
         break;
       }
       result = next(index == LEFT_INDEX ? 0 : 1, incomingBatch); // get the next batch
