@@ -129,17 +129,19 @@ public class MockRecordBatch implements CloseableRecordBatch {
     }
 
     IterOutcome currentOutcome = IterOutcome.OK;
+    boolean currentContainerHasRecordCount = false;
 
     if (currentContainerIndex < allTestContainers.size()) {
       final VectorContainer input = allTestContainers.get(currentContainerIndex);
+      currentContainerHasRecordCount = input.hasRecordCount();
       // We need to do this since the downstream operator expects vector reference to be same
       // after first next call in cases when schema is not changed
       final BatchSchema inputSchema = input.getSchema();
-      if (!container.getSchema().isEquivalent(inputSchema)) {
+      if (!container.getSchema().isEquivalent(inputSchema) || ! currentContainerHasRecordCount) {
         container.clear();
         container = new VectorContainer(allocator, inputSchema);
       }
-      if ( input.hasRecordCount() ) { // Skip for special testing w/o record count
+      if ( currentContainerHasRecordCount ) { // Skip for special testing w/o record count
         final int recordCount = input.getRecordCount();
         container.transferIn(input);
         container.setRecordCount(recordCount);
@@ -164,7 +166,9 @@ public class MockRecordBatch implements CloseableRecordBatch {
       case OUT_OF_MEMORY:
       //case OK_NEW_SCHEMA:
         isDone = true;
-        container.setRecordCount(0);
+        if ( currentContainerHasRecordCount ) { // Skip for special testing w/o record count
+          container.setRecordCount(0);
+        }
         return currentOutcome;
       case NOT_YET:
         container.setRecordCount(0);
