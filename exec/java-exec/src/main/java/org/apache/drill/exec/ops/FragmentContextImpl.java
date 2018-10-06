@@ -114,7 +114,7 @@ public class FragmentContextImpl extends BaseFragmentContext implements Executor
   private final BufferManager bufferManager;
   private ExecutorState executorState;
   private final ExecutionControls executionControls;
-
+  private final FragmentSharedMemory sharedMemory;
   private final SendingAccountor sendingAccountor = new SendingAccountor();
   private final Consumer<RpcException> exceptionConsumer = new Consumer<RpcException>() {
     @Override
@@ -144,11 +144,13 @@ public class FragmentContextImpl extends BaseFragmentContext implements Executor
    * @param dbContext DrillbitContext.
    * @param fragment Fragment implementation.
    * @param funcRegistry FunctionImplementationRegistry.
+   * @param fsm
    * @throws ExecutionSetupException
    */
   public FragmentContextImpl(final DrillbitContext dbContext, final PlanFragment fragment,
-                             final FunctionImplementationRegistry funcRegistry) throws ExecutionSetupException {
-    this(dbContext, fragment, null, null, funcRegistry);
+                             final FunctionImplementationRegistry funcRegistry, FragmentSharedMemory fsm)
+    throws ExecutionSetupException {
+    this(dbContext, fragment, null, null, funcRegistry, fsm);
   }
 
   /**
@@ -159,10 +161,10 @@ public class FragmentContextImpl extends BaseFragmentContext implements Executor
    * @param queryContext QueryContext.
    * @param connection UserClientConnection.
    * @param funcRegistry FunctionImplementationRegistry.
+   * @param fsm
    * @throws ExecutionSetupException
    */
-  public FragmentContextImpl(final DrillbitContext dbContext, final PlanFragment fragment, final QueryContext queryContext,
-                             final UserClientConnection connection, final FunctionImplementationRegistry funcRegistry)
+  public FragmentContextImpl(final DrillbitContext dbContext, final PlanFragment fragment, final QueryContext queryContext, final UserClientConnection connection, final FunctionImplementationRegistry funcRegistry, FragmentSharedMemory fsm)
     throws ExecutionSetupException {
     super(funcRegistry);
     this.context = dbContext;
@@ -189,6 +191,8 @@ public class FragmentContextImpl extends BaseFragmentContext implements Executor
 
     executionControls = new ExecutionControls(fragmentOptions, dbContext.getEndpoint());
 
+    sharedMemory = fsm; //
+
     // Add the fragment context to the root allocator.
     // The QueryManager will call the root allocator to recalculate all the memory limits for all the fragments
     try {
@@ -214,9 +218,8 @@ public class FragmentContextImpl extends BaseFragmentContext implements Executor
    * TODO: Remove this constructor when removing the SimpleRootExec (DRILL-2097). This is kept only to avoid modifying
    * the long list of test files.
    */
-  public FragmentContextImpl(DrillbitContext dbContext, PlanFragment fragment, UserClientConnection connection,
-                             FunctionImplementationRegistry funcRegistry) throws ExecutionSetupException {
-    this(dbContext, fragment, null, connection, funcRegistry);
+  public FragmentContextImpl(DrillbitContext dbContext, PlanFragment fragment, UserClientConnection connection, FunctionImplementationRegistry funcRegistry, FragmentSharedMemory fsm) throws ExecutionSetupException {
+    this(dbContext, fragment, null, connection, funcRegistry, fsm);
   }
 
   @Override
@@ -356,6 +359,9 @@ public class FragmentContextImpl extends BaseFragmentContext implements Executor
   public RuntimeFilterWritable getRuntimeFilter() {
     return runtimeFilterWritable;
   }
+
+  @Override
+  public FragmentSharedMemory getSharedMemory() { return sharedMemory; }
 
   /**
    * Get this fragment's allocator.

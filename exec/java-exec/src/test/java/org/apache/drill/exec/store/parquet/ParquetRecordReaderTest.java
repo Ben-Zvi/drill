@@ -603,7 +603,7 @@ public class ParquetRecordReaderTest extends BaseTestQuery {
 
     final DrillConfig c = DrillConfig.create();
     final FunctionImplementationRegistry registry = new FunctionImplementationRegistry(c);
-    final FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), connection, registry);
+    final FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), connection, registry, null);
 
     final String fileName = "/tmp/parquet_test_performance.parquet";
     final HashMap<String, FieldInfo> fields = new HashMap<>();

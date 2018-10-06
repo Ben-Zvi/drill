@@ -196,8 +196,8 @@ public class TestAllocators extends DrillTest {
       pfBuilder2.setMemInitial(500000);
       BitControl.PlanFragment pf2 = pfBuilder1.build();
 
-      FragmentContextImpl fragmentContext1 = new FragmentContextImpl(bitContext, pf1, null, functionRegistry);
-      FragmentContextImpl fragmentContext2 = new FragmentContextImpl(bitContext, pf2, null, functionRegistry);
+      FragmentContextImpl fragmentContext1 = new FragmentContextImpl(bitContext, pf1, null, functionRegistry, null);
+      FragmentContextImpl fragmentContext2 = new FragmentContextImpl(bitContext, pf2, null, functionRegistry, null);
 
       // Get a few physical operators. Easiest way is to read a physical plan.
       PhysicalPlanReader planReader = PhysicalPlanReaderTestFactory.defaultPhysicalPlanReader(bitContext,
@@ -244,7 +244,7 @@ public class TestAllocators extends DrillTest {
       pfBuilder3.setMemInitial(1000000);
       BitControl.PlanFragment pf3 = pfBuilder3.build();
 
-      FragmentContextImpl fragmentContext3 = new FragmentContextImpl(bitContext, pf3, null, functionRegistry);
+      FragmentContextImpl fragmentContext3 = new FragmentContextImpl(bitContext, pf3, null, functionRegistry, null);
 
       // New fragment starts an operator that allocates an amount within the limit
       def = new OpProfileDef(physicalOperator5.getOperatorId(), UserBitShared.CoreOperatorType.UNION_VALUE,

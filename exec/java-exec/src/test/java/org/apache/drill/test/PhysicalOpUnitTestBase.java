@@ -26,6 +26,7 @@ import org.apache.drill.exec.ops.AccountingDataTunnel;
 import org.apache.drill.exec.ops.AccountingUserConnection;
 import org.apache.drill.exec.ops.ExecutorFragmentContext;
 import org.apache.drill.exec.ops.FragmentContext;
+import org.apache.drill.exec.ops.FragmentSharedMemory;
 import org.apache.drill.exec.ops.FragmentStats;
 import org.apache.drill.exec.physical.base.PhysicalVisitor;
 import org.apache.drill.exec.planner.PhysicalPlanReader;
@@ -307,6 +308,9 @@ public class PhysicalOpUnitTestBase extends ExecTest {
     public void setRuntimeFilter(RuntimeFilterWritable runtimeFilter) {
       this.runtimeFilterWritable = runtimeFilter;
     }
+
+    @Override
+    public FragmentSharedMemory getSharedMemory() { return null; }
 
     @Override
     public RuntimeFilterWritable getRuntimeFilter() {

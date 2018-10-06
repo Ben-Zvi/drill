@@ -56,7 +56,7 @@ public class TestComparisonFunctions extends ExecTest {
       registry = new FunctionImplementationRegistry(c);
     }
     final FragmentContextImpl context =
-        new FragmentContextImpl(bitContext, PlanFragment.getDefaultInstance(), connection, registry);
+        new FragmentContextImpl(bitContext, PlanFragment.getDefaultInstance(), connection, registry, null);
     final PhysicalPlan plan = reader.readPhysicalPlan(planString);
     final SimpleRootExec exec = new SimpleRootExec(ImplCreator.getExec(context, (FragmentRoot) plan.getSortedOperators(false).iterator().next()));
 

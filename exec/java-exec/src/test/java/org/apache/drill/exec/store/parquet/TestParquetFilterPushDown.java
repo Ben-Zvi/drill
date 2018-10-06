@@ -60,7 +60,7 @@ public class TestParquetFilterPushDown extends PlanTestBase {
   public static void initFSAndCreateFragContext() throws Exception {
     fs = getLocalFileSystem();
     fragContext = new FragmentContextImpl(bits[0].getContext(),
-        BitControl.PlanFragment.getDefaultInstance(), null, bits[0].getContext().getFunctionImplementationRegistry());
+        BitControl.PlanFragment.getDefaultInstance(), null, bits[0].getContext().getFunctionImplementationRegistry(), null);
 
     dirTestWatcher.copyResourceToRoot(Paths.get("parquetFilterPush"));
     dirTestWatcher.copyResourceToRoot(Paths.get("parquet", "multirowgroup.parquet"));

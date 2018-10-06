@@ -201,7 +201,7 @@ public class ExpressionInterpreterTest  extends PopUnitTestBase {
 
     try {
       final FragmentContextImpl context =
-          new FragmentContextImpl(bit.getContext(), planFragment, null, bit.getContext().getFunctionImplementationRegistry());
+          new FragmentContextImpl(bit.getContext(), planFragment, null, bit.getContext().getFunctionImplementationRegistry(), null);
       return creator.getBatch(context,scanPOP, children);
     } catch (Exception ex) {
       throw new DrillRuntimeException("Error when setup fragment context" + ex);

@@ -83,4 +83,7 @@ public abstract class BaseFragmentContext implements FragmentContext {
     return getBufferManager().getManagedBuffer(size);
   }
 
+  @Override
+  public FragmentSharedMemory getSharedMemory() { return null; }
+
 }

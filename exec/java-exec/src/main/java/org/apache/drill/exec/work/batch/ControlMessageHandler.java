@@ -21,6 +21,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.DrillBuf;
 import org.apache.drill.common.exceptions.ExecutionSetupException;
 import org.apache.drill.exec.ops.FragmentContextImpl;
+import org.apache.drill.exec.ops.FragmentSharedMemory;
 import org.apache.drill.exec.proto.BitControl.CustomMessage;
 import org.apache.drill.exec.proto.BitControl.FinishedReceiver;
 import org.apache.drill.exec.proto.BitControl.FragmentStatus;
@@ -138,15 +139,16 @@ public class ControlMessageHandler implements RequestHandler<ControlConnection> 
    * Start a new fragment on this node. These fragments can be leaf or intermediate fragments
    * which are scheduled by remote or local Foreman node.
    * @param fragment
+   * @param fsm
    * @throws UserRpcException
    */
-  public void startNewFragment(final PlanFragment fragment, final DrillbitContext drillbitContext)
+  public void startNewFragment(final PlanFragment fragment, final DrillbitContext drillbitContext, FragmentSharedMemory fsm)
       throws UserRpcException {
     logger.debug("Received remote fragment start instruction", fragment);
 
     try {
       final FragmentContextImpl fragmentContext = new FragmentContextImpl(drillbitContext, fragment,
-          drillbitContext.getFunctionImplementationRegistry());
+          drillbitContext.getFunctionImplementationRegistry(), fsm);
       final FragmentStatusReporter statusReporter = new FragmentStatusReporter(fragmentContext);
       final FragmentExecutor fragmentExecutor = new FragmentExecutor(fragmentContext, fragment, statusReporter);
 
@@ -260,8 +262,9 @@ public class ControlMessageHandler implements RequestHandler<ControlConnection> 
 
   public Ack initializeFragment(InitializeFragments fragments) throws RpcException {
     final DrillbitContext drillbitContext = bee.getContext();
+    FragmentSharedMemory fragmentSharedMemory = new FragmentSharedMemory();
     for (int i = 0; i < fragments.getFragmentCount(); i++) {
-      startNewFragment(fragments.getFragment(i), drillbitContext);
+      startNewFragment(fragments.getFragment(i), drillbitContext, fragmentSharedMemory);
     }
 
     return Acks.OK;

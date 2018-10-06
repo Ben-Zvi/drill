@@ -159,6 +159,8 @@ public interface FragmentContext extends UdfUtilities, AutoCloseable {
   @Override
   void close();
 
+  FragmentSharedMemory getSharedMemory();
+
   /**
    * Return null ,if setRuntimeFilter not being called
    * @return

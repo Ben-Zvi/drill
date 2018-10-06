@@ -121,7 +121,7 @@ public class FragmentsRunner {
   private void setupRootFragment(final PlanFragment rootFragment, final FragmentRoot rootOperator) throws ExecutionSetupException {
     QueryManager queryManager = foreman.getQueryManager();
     final FragmentContextImpl rootContext = new FragmentContextImpl(drillbitContext, rootFragment, foreman.getQueryContext(),
-        initiatingClient, drillbitContext.getFunctionImplementationRegistry());
+        initiatingClient, drillbitContext.getFunctionImplementationRegistry(), null);
     final FragmentStatusReporter statusReporter = new FragmentStatusReporter(rootContext);
     final FragmentExecutor rootRunner = new FragmentExecutor(rootContext, rootFragment, statusReporter, rootOperator);
     final RootFragmentManager fragmentManager = new RootFragmentManager(rootFragment, rootRunner, statusReporter);

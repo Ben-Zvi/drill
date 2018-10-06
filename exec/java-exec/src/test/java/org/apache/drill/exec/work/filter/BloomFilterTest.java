@@ -140,7 +140,7 @@ public class BloomFilterTest {
     bit.run();
     DrillbitContext bitContext = bit.getContext();
     FunctionImplementationRegistry registry = bitContext.getFunctionImplementationRegistry();
-    FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), null, registry);
+    FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), null, registry, null);
     BufferAllocator bufferAllocator = bitContext.getAllocator();
     //create RecordBatch
     VarCharVector vector = new VarCharVector(SchemaBuilder.columnSchema("a", TypeProtos.MinorType.VARCHAR, TypeProtos.DataMode.REQUIRED), bufferAllocator);
@@ -202,7 +202,7 @@ public class BloomFilterTest {
     bit.run();
     DrillbitContext bitContext = bit.getContext();
     FunctionImplementationRegistry registry = bitContext.getFunctionImplementationRegistry();
-    FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), null, registry);
+    FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), null, registry, null);
     BufferAllocator bufferAllocator = bitContext.getAllocator();
     //create RecordBatch
     VarCharVector vector = new VarCharVector(SchemaBuilder.columnSchema("a", TypeProtos.MinorType.VARCHAR, TypeProtos.DataMode.REQUIRED), bufferAllocator);
@@ -264,7 +264,7 @@ public class BloomFilterTest {
     bit.run();
     DrillbitContext bitContext = bit.getContext();
     FunctionImplementationRegistry registry = bitContext.getFunctionImplementationRegistry();
-    FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), null, registry);
+    FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), null, registry, null);
     BufferAllocator bufferAllocator = bitContext.getAllocator();
     //create RecordBatch
     VarCharVector vector = new VarCharVector(SchemaBuilder.columnSchema("a", TypeProtos.MinorType.VARCHAR, TypeProtos.DataMode.REQUIRED), bufferAllocator);

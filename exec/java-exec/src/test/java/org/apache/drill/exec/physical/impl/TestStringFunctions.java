@@ -79,7 +79,7 @@ public class TestStringFunctions extends ExecTest {
       registry = new FunctionImplementationRegistry(c);
     }
     if (context == null) {
-      context =  new FragmentContextImpl(bitContext, PlanFragment.getDefaultInstance(), connection, registry);
+      context =  new FragmentContextImpl(bitContext, PlanFragment.getDefaultInstance(), connection, registry, null);
     }
     final PhysicalPlan plan = reader.readPhysicalPlan(planString);
     final SimpleRootExec exec = new SimpleRootExec(ImplCreator.getExec(context, (FragmentRoot) plan.getSortedOperators(false).iterator().next()));

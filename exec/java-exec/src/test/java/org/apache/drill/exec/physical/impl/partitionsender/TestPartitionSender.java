@@ -222,7 +222,7 @@ public class TestPartitionSender extends PlanTestBase {
       MockPartitionSenderRootExec partionSenderRootExec = null;
       FragmentContextImpl context = null;
       try {
-        context = new FragmentContextImpl(drillbitContext, planFragment, null, registry);
+        context = new FragmentContextImpl(drillbitContext, planFragment, null, registry, null);
         context.setExecutorState(new MockExecutorState());
         final int majorFragmentId = planFragment.getHandle().getMajorFragmentId();
         final HashPartitionSender partSender = new HashPartitionSender(majorFragmentId, hashToRandomExchange, hashToRandomExchange.getExpression(), mfEndPoints);

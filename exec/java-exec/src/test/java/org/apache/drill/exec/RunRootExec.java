@@ -53,7 +53,7 @@ public class RunRootExec {
     PhysicalPlanReader reader = bitContext.getPlanReader();
     PhysicalPlan plan = reader.readPhysicalPlan(Files.asCharSource(new File(path), Charsets.UTF_8).read());
     FunctionImplementationRegistry registry = bitContext.getFunctionImplementationRegistry();
-    FragmentContextImpl context = new FragmentContextImpl(bitContext, PlanFragment.getDefaultInstance(), null, registry);
+    FragmentContextImpl context = new FragmentContextImpl(bitContext, PlanFragment.getDefaultInstance(), null, registry, null);
     SimpleRootExec exec;
     for (int i = 0; i < iterations; i++) {
       Stopwatch w = Stopwatch.createStarted();

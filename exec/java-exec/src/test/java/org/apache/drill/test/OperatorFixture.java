@@ -17,6 +17,7 @@
  */
 package org.apache.drill.test;
 
+import org.apache.drill.exec.ops.FragmentSharedMemory;
 import org.apache.drill.shaded.guava.com.google.common.base.Function;
 import org.apache.drill.shaded.guava.com.google.common.base.Preconditions;
 import org.apache.drill.shaded.guava.com.google.common.collect.Lists;
@@ -313,6 +314,9 @@ public class OperatorFixture extends BaseFixture implements AutoCloseable {
       }
       bufferManager.close();
     }
+
+    @Override
+    public FragmentSharedMemory getSharedMemory() { return null; }
 
     @Override
     public RuntimeFilterWritable getRuntimeFilter() {

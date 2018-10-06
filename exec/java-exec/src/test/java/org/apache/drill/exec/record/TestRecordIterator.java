@@ -70,7 +70,7 @@ public class TestRecordIterator extends PopUnitTestBase {
 
     final PhysicalPlan plan = reader.readPhysicalPlan(planStr);
     final FunctionImplementationRegistry registry = new FunctionImplementationRegistry(c);
-    final FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), connection, registry);
+    final FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), connection, registry, null);
     final List<PhysicalOperator> operatorList = plan.getSortedOperators(false);
     SimpleRootExec exec = new SimpleRootExec(ImplCreator.getExec(context, (FragmentRoot) operatorList.iterator().next()));
 
@@ -126,7 +126,7 @@ public class TestRecordIterator extends PopUnitTestBase {
 
     final PhysicalPlan plan = reader.readPhysicalPlan(planStr);
     final FunctionImplementationRegistry registry = new FunctionImplementationRegistry(c);
-    final FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), connection, registry);
+    final FragmentContextImpl context = new FragmentContextImpl(bitContext, BitControl.PlanFragment.getDefaultInstance(), connection, registry, null);
     final List<PhysicalOperator> operatorList = plan.getSortedOperators(false);
     SimpleRootExec exec = new SimpleRootExec(ImplCreator.getExec(context, (FragmentRoot) operatorList.iterator().next()));
 
