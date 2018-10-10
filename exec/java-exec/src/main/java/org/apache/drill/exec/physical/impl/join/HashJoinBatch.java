@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Semaphore;
 
 import org.apache.drill.exec.ops.FragmentSharedMemory;
 import org.apache.drill.shaded.guava.com.google.common.collect.Lists;
@@ -416,29 +415,47 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
 
   @Override
   public IterOutcome innerNext() {
-    System.out.format("First 0 - Major-Minor-Op: %d-%d-%d\n",context.getHandle().getMajorFragmentId(),
-      context.getHandle().getMinorFragmentId(),popConfig.getOperatorId());
+
     boolean iAmFirst = false;
+    boolean gotLock = false;
+    boolean gotInc = false;
     String shmStatus = "null";
     if ( sharedMemory != null ) {
+      //System.out.format("innerNext About to lock %x - Major-Minor-Op: %d-%d-%d  count = %d\n",
+      //  System.identityHashCode(sharedMemory), context.getHandle().getMajorFragmentId(),
+      //  context.getHandle().getMinorFragmentId(),popConfig.getOperatorId(),sharedMemory.getCount());
       sharedMemory.lock();
-      if ( sharedMemory.isZero() ) { shmStatus = "New_Hash_Table"; iAmFirst = true; }
-      else { shmStatus = "Number " + sharedMemory.getCount(); }
-      sharedMemory.inc();
-      if ( iAmFirst ) { System.out.format("First 1\n");  }
-      try { Thread.sleep(10); } catch (InterruptedException ie) {};
+      gotLock = true;
+
+      if ( sharedMemory.getObject(0) == null ) {
+        shmStatus = "Build_New_Hash_Table";
+        iAmFirst = true;
+      }
+      else {
+        shmStatus = "Using_the_HT ";
+      }
+
+      gotInc = true;
+
+      // System.out.format("Lock %x count is %d\n",System.identityHashCode(sharedMemory),sharedMemory.getCount());
+      try { Thread.sleep(10); }
+      catch (InterruptedException ie) {return IterOutcome.STOP;}
     }
-    System.out.format("SHM was %s. Major-Minor-Op: %d-%d-%d\n",
-      shmStatus, context.getHandle().getMajorFragmentId(),
-      context.getHandle().getMinorFragmentId(),popConfig.getOperatorId());
+    // System.out.format("SHM %x was %s. Major-Minor-Op: %d-%d-%d\n",System.identityHashCode(sharedMemory),
+    //  shmStatus, context.getHandle().getMajorFragmentId(),
+    //  context.getHandle().getMinorFragmentId(),popConfig.getOperatorId());
     logger.warn("SHM was {}, Major-Minor-Op: {}-{}-{}",
       shmStatus, context.getHandle().getMajorFragmentId(),
       context.getHandle().getMinorFragmentId(),popConfig.getOperatorId());
 
-    if ( iAmFirst ) { System.out.format("First 2\n");  }
+    // if ( iAmFirst ) { System.out.format("First 2\n");  }
 
     if (wasKilled) {
-      if ( sharedMemory != null ) {
+      if ( gotLock ) {
+        gotLock = gotInc = false;
+        sharedMemory.deactivate();
+        //System.out.format("Was killed - release - Major-Minor-Op: %d-%d-%d  count = %d\n",context.getHandle().getMajorFragmentId(),
+        //  context.getHandle().getMinorFragmentId(),popConfig.getOperatorId(),sharedMemory.getCount());
         sharedMemory.release(); // HT was created, unlock access
       }
       // We have recieved a kill signal. We need to stop processing.
@@ -446,20 +463,24 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
       super.close();
       return IterOutcome.NONE;
     }
-    if ( iAmFirst ) { System.out.format("First 3\n");  }
+    // if ( iAmFirst ) { System.out.format("First 3\n");  }
 
     prefetchFirstBuildBatch();
-    if ( iAmFirst ) { System.out.format("First 4\n");  }
+    // if ( iAmFirst ) { System.out.format("First 4\n");  }
 
     if (rightUpstream.isError()) {
       // A termination condition was reached while prefetching the first build side data holding batch.
       // We need to terminate.
-      if ( sharedMemory != null ) {
+      if ( gotLock ) {
+        gotLock = gotInc = false;
+        sharedMemory.deactivate();
+        //System.out.format("Error - release - Major-Minor-Op: %d-%d-%d  count = %d\n",context.getHandle().getMajorFragmentId(),
+        //  context.getHandle().getMinorFragmentId(),popConfig.getOperatorId(),sharedMemory.getCount());
         sharedMemory.release(); // HT was created, unlock access
       }
       return rightUpstream;
     }
-    if ( iAmFirst ) { System.out.format("First 5\n");  }
+    // if ( iAmFirst ) { System.out.format("First 5\n");  }
 
     try {
       /* If we are here for the first time, execute the build phase of the
@@ -468,29 +489,36 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
       if (state == BatchState.FIRST) {
         // Build the hash table, using the build side record batches.
         final IterOutcome buildExecuteTermination = executeBuildPhase();
-        if ( iAmFirst ) { System.out.format("First 6\n");  }
+        // if ( iAmFirst ) { System.out.format("First 6\n");  }
 
         if (buildExecuteTermination != null) {
           // A termination condition was reached while executing the build phase.
           // We need to terminate.
-          if ( sharedMemory != null ) {
+          if ( gotLock ) {
+            gotLock = gotInc = false;
+            sharedMemory.deactivate();
+            //System.out.format("Build execute termination - release - Major-Minor-Op: %d-%d-%d  count = %d\n",context.getHandle().getMajorFragmentId(),
+            //  context.getHandle().getMinorFragmentId(),popConfig.getOperatorId(),sharedMemory.getCount());
             sharedMemory.release(); // HT was created, unlock access
           }
           return buildExecuteTermination;
         }
-        if ( iAmFirst ) { System.out.format("First 7\n");  }
+        // if ( iAmFirst ) { System.out.format("First 7\n");  }
 
         // Update the hash table related stats for the operator
         updateStats();
       }
 
-      if ( sharedMemory != null ) {
+      if ( gotLock ) {
+        gotLock = false;
         // If the builder -- need to update the "shared objects"
         // else - Need to update the partition with the common Hash-Table and Helper
-        if ( iAmFirst ) { System.out.format("First 8\n");  }
-
+        // if ( iAmFirst ) { System.out.format("First 8\n");  }
+        //System.out.format("Release %x after building the HT - Major-Minor-Op: %d-%d-%d  count = %d\n",
+        //  System.identityHashCode(sharedMemory), context.getHandle().getMajorFragmentId(),
+        //  context.getHandle().getMinorFragmentId(),popConfig.getOperatorId(),sharedMemory.getCount());
         sharedMemory.release(); // HT was created, unlock access
-        if ( iAmFirst ) { System.out.format("First 9\n");  }
+        // if ( iAmFirst ) { System.out.format("First 9\n");  }
 
       }
 
@@ -619,14 +647,21 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
         // Our build side is empty, we won't have any matches, clear the probe side
         killAndDrainLeftUpstream();
       }
-      if ( sharedMemory != null ) {
+      if ( gotInc ) {
         int time = iAmFirst ? 30 : 10;
-        try { Thread.sleep(time); } catch (InterruptedException ie) {};
+        try { Thread.sleep(time); }
+        catch (InterruptedException ie) { return IterOutcome.STOP;}
 
+        //System.out.format("About to lock %x again - Major-Minor-Op: %d-%d-%d  count = %d\n",System.identityHashCode(sharedMemory),
+        //  context.getHandle().getMajorFragmentId(),
+        //  context.getHandle().getMinorFragmentId(),popConfig.getOperatorId(),sharedMemory.getCount());
         sharedMemory.lock();
-        sharedMemory.dec();
-        if (sharedMemory.isZero()) { // the last one deallocates
-
+        //System.out.format("Locked again \n");
+        gotInc = false;
+        if (sharedMemory.deactivate()) { // the last one deallocates
+           // System.out.println("Last one");
+          try { Thread.sleep(time); }
+          catch (InterruptedException ie) { return IterOutcome.STOP;}
         }
         sharedMemory.release();
       }
@@ -638,6 +673,11 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
 
       return IterOutcome.NONE;
     } catch (SchemaChangeException e) {
+      if ( gotInc ) {
+        sharedMemory.lock();
+        sharedMemory.deactivate();
+        sharedMemory.release(); // HT was created, unlock access
+      }
       context.getExecutorState().fail(e);
       killIncoming(false);
       return IterOutcome.STOP;
@@ -682,8 +722,7 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
       leftExpr = null;
     } else {
       if (probeBatch.getSchema().getSelectionVectorMode() != BatchSchema.SelectionVectorMode.NONE) {
-        final String errorMsg = new StringBuilder().append("Hash join does not support probe batch with selection vectors. ").append("Probe batch has selection mode = ").append
-          (probeBatch.getSchema().getSelectionVectorMode()).toString();
+        final String errorMsg = "Hash join does not support probe batch with selection vectors. " + "Probe batch has selection mode = " + probeBatch.getSchema().getSelectionVectorMode();
         throw new SchemaChangeException(errorMsg);
       }
     }
@@ -1208,7 +1247,7 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
 
     enableRuntimeFilter = context.getOptions().getOption(ExecConstants.HASHJOIN_ENABLE_RUNTIME_FILTER);
 
-    // Get the shared memory per this operator (there could be other Hash Join Ops in this fragment)
+    // Get the shared memory per this operator (there could be other Hash Join Ops in this same fragment)
     FragmentSharedMemory fsm = context.getSharedMemory();
     if ( fsm != null ) {
       sharedMemory = fsm.getOrAddOp(popConfig.getOperatorId());

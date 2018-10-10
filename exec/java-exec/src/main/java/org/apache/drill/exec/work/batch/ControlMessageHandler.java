@@ -51,6 +51,9 @@ import org.apache.drill.exec.work.fragment.FragmentManager;
 import org.apache.drill.exec.work.fragment.FragmentStatusReporter;
 import org.apache.drill.exec.work.fragment.NonRootFragmentManager;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import static org.apache.drill.exec.rpc.RpcBus.get;
 
 public class ControlMessageHandler implements RequestHandler<ControlConnection> {
@@ -262,9 +265,30 @@ public class ControlMessageHandler implements RequestHandler<ControlConnection> 
 
   public Ack initializeFragment(InitializeFragments fragments) throws RpcException {
     final DrillbitContext drillbitContext = bee.getContext();
-    FragmentSharedMemory fragmentSharedMemory = new FragmentSharedMemory();
+    // Each local __major__ fragment is allocated a single "shared memory"
+    // which is to be shared among its local minor fragments
+    // (If all the minors are guaranteed consecutive in `fragments`, then no need for a map ...)
+    Map<Integer,FragmentSharedMemory> majorFragmentToSHM = new HashMap<>();
+
+    // for each minor fragment (in the list, covering multiple major fragments)
     for (int i = 0; i < fragments.getFragmentCount(); i++) {
+
+      // get or create a new Major Fragment Shared Memory
+      int major = fragments.getFragment(i).getHandle().getMajorFragmentId();
+      FragmentSharedMemory fragmentSharedMemory = majorFragmentToSHM.get(new Integer(major));
+      if ( null == fragmentSharedMemory ) {
+        fragmentSharedMemory = new FragmentSharedMemory();
+        majorFragmentToSHM.put(new Integer(major), fragmentSharedMemory);
+        fragmentSharedMemory.lock(); // ensure early starters don't have access yet
+      }
+      fragmentSharedMemory.incNumMinorFragments(); // count one more minor fragment
+
       startNewFragment(fragments.getFragment(i), drillbitContext, fragmentSharedMemory);
+    }
+
+    // now release all the locks (counting of minor fragments, per each major, is done)
+    for ( FragmentSharedMemory fragmentSharedMemory : majorFragmentToSHM.values() ) {
+      fragmentSharedMemory.release();
     }
 
     return Acks.OK;

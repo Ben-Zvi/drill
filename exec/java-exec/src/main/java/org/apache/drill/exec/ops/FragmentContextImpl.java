@@ -150,6 +150,7 @@ public class FragmentContextImpl extends BaseFragmentContext implements Executor
   public FragmentContextImpl(final DrillbitContext dbContext, final PlanFragment fragment,
                              final FunctionImplementationRegistry funcRegistry, FragmentSharedMemory fsm)
     throws ExecutionSetupException {
+
     this(dbContext, fragment, null, null, funcRegistry, fsm);
   }
 

@@ -2,27 +2,19 @@ package org.apache.drill.exec.ops;
 
 import org.apache.drill.common.exceptions.DrillRuntimeException;
 
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.Semaphore;
 
 
-
 public class FragmentSharedMemory {
-  private Semaphore sem = new Semaphore(1);
 
   public class OperatorSharedMemory {
-    private Semaphore opSem = new Semaphore(1);
-    private int opCount = 0;
-    Object opShared[] = new Object[4];
-    Object sh2 = null;
+    private Semaphore opSem;
+    private volatile int opWidth;
+    Object opShared[];
 
-    public boolean isZero() { return opCount == 0; }
-    public void inc() { opCount++; }
-    public void dec() { opCount--; }
-    public int getCount() { return opCount; }
+    public synchronized boolean deactivate() { return 0 == --opWidth; }
     // public Semaphore getSemaphore() { return sem; }
     public void lock() throws DrillRuntimeException {
       try { opSem.acquire(); }
@@ -31,6 +23,13 @@ public class FragmentSharedMemory {
     public void release() { opSem.release(); }
     public void setObject( Object ob, int offset ) { opShared[offset] = ob; }
     public Object getObject(int offset) { return opShared[offset]; }
+
+    OperatorSharedMemory () {
+      opSem = new Semaphore(1);
+      opWidth = getNumMinorFragments();
+      opShared = new Object[4];
+      opShared[0] = null; // mark as uninitialized
+    }
   }
 
   private Map<Integer, OperatorSharedMemory> opMap = new HashMap<Integer, OperatorSharedMemory>(); /* {
@@ -114,10 +113,46 @@ public class FragmentSharedMemory {
   public void setObject( Object ob, int offset ) { shared[offset] = ob; }
   public Object getObject(int offset) { return shared[offset]; } */
 
+  // Each Shared-Memory (per a major fragment) will set the number of its minor fragments (per this node)
+  private Semaphore sem = new Semaphore(1);
+  private volatile int numMinorFragments; // i.e., the width
+
+  public void lock() { try {sem.acquire();} catch (InterruptedException ie) { return; } }
+  public void release() { sem.release(); }
+
+  public void incNumMinorFragments() {
+    try {
+      sem.acquire();
+      numMinorFragments++;
+      sem.release();
+    } catch (InterruptedException ie) { return; }
+  }
+  public void decNumMinorFragments() {
+    try {
+      sem.acquire();
+      numMinorFragments--;
+      sem.release();
+    } catch (InterruptedException ie) { return; }
+  }
+  public int getNumMinorFragments() {
+    try {
+      int result;
+      sem.acquire();
+      result = numMinorFragments;
+      sem.release();
+      return result;
+    } catch (InterruptedException ie) { return Integer.MAX_VALUE; }
+  }
+
+
   public synchronized OperatorSharedMemory getOrAddOp(int op) {
     OperatorSharedMemory osm = opMap.get(new Integer(op));
+    // if ( null != osm ) { System.out.format("Found osm %x for op %d\n",System.identityHashCode(osm), op); } // found it
     if ( null != osm ) { return osm; } // found it
     opMap.put(new Integer(op), new OperatorSharedMemory());
+
+    // System.out.format("Creating osm %x for op %d\n",System.identityHashCode(opMap.get(new Integer(op))), op);
+
     return opMap.get(new Integer(op));
   }
 
