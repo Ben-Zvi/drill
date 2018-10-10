@@ -135,7 +135,10 @@ public class FragmentSharedMemory {
   private Semaphore sem = new Semaphore(1);
   private volatile int numMinorFragments; // i.e., the width
 
-  public void lock() { try {sem.acquire();} catch (InterruptedException ie) { return; } }
+  public void lock() {
+    try {sem.acquire();}
+    catch (InterruptedException ie) { return; }
+  }
   public void release() { sem.release(); }
 
   public void incNumMinorFragments() {
