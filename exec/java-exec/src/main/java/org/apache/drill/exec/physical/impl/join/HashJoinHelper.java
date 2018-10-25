@@ -49,6 +49,7 @@ import org.apache.drill.exec.record.selection.SelectionVector4;
  * for right outer and full outer joins
  */
 public class HashJoinHelper {
+  protected static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(HashJoinHelper.class);
 
   /* List of start indexes. Stores the record and batch index of the first record
    * with a give key.
@@ -61,6 +62,7 @@ public class HashJoinHelper {
   // Fragment context
   FragmentContext context;
   BufferAllocator allocator;
+  private boolean semiJoin;
 
   // Constant to indicate index is empty.
   static final int INDEX_EMPTY = -1;
@@ -71,9 +73,10 @@ public class HashJoinHelper {
   public static final int LEFT_INPUT = 0;
   public static final int RIGHT_INPUT = 1;
 
-  public HashJoinHelper(FragmentContext context, BufferAllocator allocator) {
+  public HashJoinHelper(FragmentContext context, BufferAllocator allocator, boolean semiJoin) {
     this.context = context;
     this.allocator = allocator;
+    this.semiJoin = semiJoin;
 }
 
   public void addStartIndexBatch() throws SchemaChangeException {
@@ -210,7 +213,9 @@ public class HashJoinHelper {
     // If head of the list is empty, insert current index at this position
     if ((linkIndex = (startIndex.get(offsetIdx))) == INDEX_EMPTY) {
       startIndex.set(offsetIdx, batchIndex, recordIndex);
-    } else {
+      logger.warn("Inserting  offsetIdx {}  batchIndex {}  recordIndex {}",offsetIdx,batchIndex,recordIndex);
+    } else if ( semiJoin ) { logger.warn("Not Inserting DUPL");} // semi join does not need duplicates
+    else {
       /* Head of this list is not empty, if the first link
        * is empty insert there
        */

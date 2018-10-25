@@ -34,6 +34,7 @@ import org.apache.drill.exec.vector.ValueVector;
 import static org.apache.drill.exec.record.JoinBatchMemoryManager.LEFT_INDEX;
 
 public abstract class HashJoinProbeTemplate implements HashJoinProbe {
+  protected static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(HashJoinProbeTemplate.class);
 
   VectorContainer container; // the outgoing container
 
@@ -327,11 +328,17 @@ public abstract class HashJoinProbeTemplate implements HashJoinProbe {
             outputRow(currPartition.getContainers(), currentCompositeIdx,
               probeBatch.getContainer(), recordsProcessed);
 
+          logger.warn("Output fot recordsProcessed - {}",recordsProcessed);
+
           /* Projected single row from the build side with matching key but there
            * may be more rows with the same key. Check if that's the case
            */
-          currentCompositeIdx = semiJoin ? -1 : // if semi than skip build-side duplicated
+          currentCompositeIdx = /* semiJoin ? -1 : */ // if semi than skip build-side duplicated
             currPartition.getNextIndex(currentCompositeIdx); // else check for the next dup
+          if ( semiJoin && currentCompositeIdx  >= 0) {
+            logger.warn("Skipping the rest of the non-empty chain");
+            currentCompositeIdx = -1;
+          }
           if (currentCompositeIdx == -1) {
             /* We only had one row in the build side that matched the current key
              * from the probe side. Drain the next row in the probe side.

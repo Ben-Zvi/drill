@@ -126,8 +126,8 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
   private boolean updatedRecordsPerBatch = false;
 
   public HashPartition(FragmentContext context, BufferAllocator allocator, ChainedHashTable baseHashTable,
-                       RecordBatch buildBatch, RecordBatch probeBatch,
-                       int recordsPerBatch, SpillSet spillSet, int partNum, int cycleNum, int numPartitions) {
+                       RecordBatch buildBatch, RecordBatch probeBatch, int recordsPerBatch,
+                       SpillSet spillSet, int partNum, int cycleNum, int numPartitions, boolean semiJoin) {
     this.allocator = allocator;
     this.buildBatch = buildBatch;
     this.probeBatch = probeBatch;
@@ -150,7 +150,7 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
     } catch (SchemaChangeException sce) {
       throw new IllegalStateException("Unexpected Schema Change while creating a hash table",sce);
     }
-    this.hjHelper = new HashJoinHelper(context, allocator);
+    this.hjHelper = new HashJoinHelper(context, allocator, semiJoin);
     tmpBatchesList = new ArrayList<>();
     if ( numPartitions > 1 ) {
       allocateNewCurrentBatchAndHV();
@@ -514,7 +514,7 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
       for (int recInd = 0; recInd < currentRecordCount; recInd++) {
         int hashCode = HV_vector.getAccessor().get(recInd);
         try {
-          hashTable.put(recInd, htIndex, hashCode, BATCH_SIZE);
+          HashTable.PutStatus putStatus = hashTable.put(recInd, htIndex, hashCode, BATCH_SIZE);
         } catch (RetryAfterSpillException RE) {
           throw new OutOfMemoryException("HT put");
         } // Hash Join does not retry

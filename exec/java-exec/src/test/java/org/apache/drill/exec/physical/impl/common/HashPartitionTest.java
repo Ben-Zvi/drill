@@ -115,7 +115,7 @@ public class HashPartitionTest {
           spillSet,
           0,
           0,
-          2); // only '1' has a special treatment
+          2, false); // only '1' has a special treatment
 
         final HashJoinMemoryCalculator.BuildSidePartitioning noopCalc = new HashJoinMemoryCalculatorImpl.NoopBuildSidePartitioningImpl();
 
@@ -215,7 +215,7 @@ public class HashPartitionTest {
           spillSet,
           0,
           0,
-          2);
+          2, false);
 
         final HashJoinMemoryCalculator.BuildSidePartitioning noopCalc = new HashJoinMemoryCalculatorImpl.NoopBuildSidePartitioningImpl();
 

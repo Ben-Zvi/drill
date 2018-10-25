@@ -706,7 +706,7 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
     // Recreate the partitions every time build is initialized
     for (int part = 0; part < numPartitions; part++ ) {
       partitions[part] = new HashPartition(context, allocator, baseHashTable, buildBatch, probeBatch,
-        RECORDS_PER_BATCH, spillSet, part, cycleNum, numPartitions);
+        RECORDS_PER_BATCH, spillSet, part, cycleNum, numPartitions, popConfig.isSemiJoin());
     }
 
     spilledInners = new HJSpilledPartition[numPartitions];
