@@ -115,7 +115,8 @@ public class HashPartitionTest {
           spillSet,
           0,
           0,
-          2); // only '1' has a special treatment
+          2,  // only '1' has a special treatment
+          false);
 
         final HashJoinMemoryCalculator.BuildSidePartitioning noopCalc = new HashJoinMemoryCalculatorImpl.NoopBuildSidePartitioningImpl();
 
@@ -215,7 +216,7 @@ public class HashPartitionTest {
           spillSet,
           0,
           0,
-          2);
+          2, false);
 
         final HashJoinMemoryCalculator.BuildSidePartitioning noopCalc = new HashJoinMemoryCalculatorImpl.NoopBuildSidePartitioningImpl();
 
@@ -247,7 +248,7 @@ public class HashPartitionTest {
       try (OperatorFixture operatorFixture = new OperatorFixture.Builder(HashPartitionTest.this.dirTestWatcher).build()) {
 
         final FragmentContext context = operatorFixture.getFragmentContext();
-        final HashJoinPOP pop = new HashJoinPOP(null, null, null, JoinRelType.FULL, null);
+        final HashJoinPOP pop = new HashJoinPOP(null, null, null, JoinRelType.FULL, false, null);
         final OperatorContext operatorContext = operatorFixture.operatorContext(pop);
         final DrillConfig config = context.getConfig();
         final BufferAllocator allocator = operatorFixture.allocator();

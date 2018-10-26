@@ -124,10 +124,12 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
   private long partitionInMemorySize;
   private long numInMemoryRecords;
   private boolean updatedRecordsPerBatch = false;
+  private final boolean semiJoin;
 
   public HashPartition(FragmentContext context, BufferAllocator allocator, ChainedHashTable baseHashTable,
                        RecordBatch buildBatch, RecordBatch probeBatch,
-                       int recordsPerBatch, SpillSet spillSet, int partNum, int cycleNum, int numPartitions) {
+                       int recordsPerBatch, SpillSet spillSet, int partNum, int cycleNum, int numPartitions,
+                       boolean semiJoin) {
     this.allocator = allocator;
     this.buildBatch = buildBatch;
     this.probeBatch = probeBatch;
@@ -136,6 +138,7 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
     this.partitionNum = partNum;
     this.cycleNum = cycleNum;
     this.numPartitions = numPartitions;
+    this.semiJoin = semiJoin;
 
     try {
       this.hashTable = baseHashTable.createAndSetupHashTable(null);
@@ -150,7 +153,7 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
     } catch (SchemaChangeException sce) {
       throw new IllegalStateException("Unexpected Schema Change while creating a hash table",sce);
     }
-    this.hjHelper = new HashJoinHelper(context, allocator);
+    this.hjHelper = semiJoin ? null : new HashJoinHelper(context, allocator);
     tmpBatchesList = new ArrayList<>();
     if ( numPartitions > 1 ) {
       allocateNewCurrentBatchAndHV();
@@ -390,7 +393,7 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
     return compositeIndex;
   }
   public int getNextIndex(int compositeIndex) {
-    // in case of iner rows with duplicate keys, get the next one
+    // in case of inner rows with duplicate keys, get the next one
     return hjHelper.getNextIndex(compositeIndex);
   }
   public void setRecordMatched(int compositeIndex) {
@@ -499,7 +502,7 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
       final int currentRecordCount = nextBatch.getRecordCount();
 
       // For every incoming build batch, we create a matching helper batch
-      hjHelper.addNewBatch(currentRecordCount);
+      if ( ! semiJoin ) { hjHelper.addNewBatch(currentRecordCount); }
 
       // Holder contains the global index where the key is hashed into using the hash table
       final IndexPointer htIndex = new IndexPointer();
@@ -522,7 +525,7 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
          * the current record index and batch index. This will be used
          * later when we probe and find a match.
          */
-        hjHelper.setCurrentIndex(htIndex.value, curr /* buildBatchIndex */, recInd);
+        if ( ! semiJoin ) { hjHelper.setCurrentIndex(htIndex.value, curr /* buildBatchIndex */, recInd); }
       }
 
       containers.add(nextBatch);
