@@ -197,8 +197,10 @@ public abstract class HashJoinProbeTemplate implements HashJoinProbe {
     if ( buildSrcContainers != null ) {
       int buildBatchIndex = compositeBuildSrcIndex >>> 16;
       int buildOffset = compositeBuildSrcIndex & 65535;
+      int actual = buildSrcContainers.get(buildBatchIndex).getNumberOfColumns();
+      System.out.format("Columns in build side: %d  Expected: %d \n",buildSrcContainers.get(buildBatchIndex).getNumberOfColumns(),numberOfBuildSideColumns);
       appendBuild(buildSrcContainers.get(buildBatchIndex), buildOffset);
-    }
+    } // else { System.out.println("NULL BUILD SIDE");}
     if ( probeSrcContainer != null ) { appendProbe(probeSrcContainer, probeSrcIndex); }
     return container.incRecordCount();
   }

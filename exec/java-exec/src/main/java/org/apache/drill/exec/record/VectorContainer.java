@@ -150,6 +150,9 @@ public class VectorContainer implements VectorAccessible {
     final ValueVector vector;
     if (id != null) {
       vector = getValueAccessorById(id.getFieldIds()).getValueVector();
+      System.out.format("REPLACING: (%s - %s) with (%s - %s)\n",
+        vector.getField().getName(),vector.getField().getType().toString(),
+        field.getName(),field.getType().toString());
       if (id.getFieldIds().length == 1 && !vector.getField().getType().equals(field.getType())) {
         final ValueVector newVector = TypeHelper.getNewVector(field, this.getAllocator(), callBack);
         replace(vector, newVector);
@@ -355,6 +358,7 @@ public class VectorContainer implements VectorAccessible {
     SchemaBuilder bldr = BatchSchema.newBuilder().setSelectionVectorMode(mode);
     for (VectorWrapper<?> v : wrappers) {
       bldr.addField(v.getField());
+      System.out.format("VC adding %s\n",v.getField().getName());
     }
     this.schema = bldr.build();
     this.schemaChanged = false;

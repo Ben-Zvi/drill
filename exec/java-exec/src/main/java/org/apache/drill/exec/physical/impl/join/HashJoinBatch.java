@@ -327,6 +327,9 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
         buildSchema = right.getSchema();
         // position of the new "column" for keeping the hash values (after the real columns)
         rightHVColPosition = right.getContainer().getNumberOfColumns();
+        logger.warn("BUILD SIDE HAS {} COLUMNS, SCHEMA {}",rightHVColPosition,right.getSchema());
+        if ( true || popConfig.isSemiJoin() ) { System.out.format("BUILD SIDE HAS %d COLUMNS\n    Schema: %s\n Probe Schema: %s\n",
+          rightHVColPosition, right.getSchema(), probeSchema); }
         // In special cases, when the probe side is empty, and inner/left join - no need for Hash Table
         skipHashTableBuild = leftUpstream == IterOutcome.NONE && ! joinIsRightOrFull;
         // We only need the hash tables if we have data on the build side.
@@ -343,7 +346,10 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
     // If we have a valid schema, this will build a valid container. If we were unable to obtain a valid schema,
     // we still need to build a dummy schema. This code handles both cases for us.
     setupOutputContainerSchema();
+    // System.out.format("Container BEFORE Schema: %s \n",container.getSchema());
+
     container.buildSchema(BatchSchema.SelectionVectorMode.NONE);
+    System.out.format("Container AFTER Schema: %s \n",container.getSchema());
   }
 
   /**
@@ -1071,6 +1077,8 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
           outputType = inputType;
         }
 
+  System.out.format("== INNER FIELD: %s\n",field.getName());
+
         // make sure to project field with children for children to show up in the schema
         final MaterializedField projected = field.withType(outputType);
         // Add the vector to our output container
@@ -1091,7 +1099,7 @@ public class HashJoinBatch extends AbstractBinaryRecordBatch<HashJoinPOP> {
         } else {
           outputType = inputType;
         }
-
+System.out.format("OUTER FIELD: %s\n",vv.getField().getName());
         final ValueVector v = container.addOrGet(MaterializedField.create(vv.getField().getName(), outputType));
         if (v instanceof AbstractContainerVector) {
           vv.getValueVector().makeTransferPair(v);
