@@ -22,7 +22,6 @@ import org.apache.drill.categories.SqlTest;
 import org.apache.drill.categories.UnlikelyTest;
 import org.apache.drill.common.exceptions.UserException;
 import org.apache.drill.common.types.TypeProtos;
-import org.apache.drill.exec.planner.physical.PlannerSettings;
 import org.apache.drill.exec.record.BatchSchema;
 import org.apache.drill.test.BaseTestQuery;
 import org.apache.drill.test.rowSet.schema.SchemaBuilder;
@@ -441,7 +440,6 @@ public class TestStarQueries extends BaseTestQuery {
   @Test // DRILL-2069
   @Category(UnlikelyTest.class)
   public void testStarInSubquery() throws Exception {
-    /*
     testBuilder()
         .unOrdered()
         .sqlQuery("select * from cp.`tpch/nation.parquet` where n_regionkey in (select r_regionkey from cp.`tpch/region.parquet`)")
@@ -454,16 +452,19 @@ public class TestStarQueries extends BaseTestQuery {
         .sqlQuery("select * from cp.`tpch/nation.parquet` where (n_nationkey, n_name) in ( select n_nationkey, n_name from cp.`tpch/nation.parquet`)")
         .sqlBaselineQuery("select n_nationkey, n_name, n_regionkey, n_comment from cp.`tpch/nation.parquet` where (n_nationkey, n_name) in ( select n_nationkey, n_name from cp.`tpch/nation.parquet`)")
         .build().run();
-*/
+
     // Multiple in subquery predicates.
     testBuilder()
         .unOrdered()
-        .optionSettingQueriesForTestQuery("alter session set `planner.enable_semijoin` = false")
-        .sqlQuery("select n_nationkey, n_name, n_regionkey, n_comment from cp.`tpch/nation.parquet` " +
-            "where n_name in (select n_name from cp.`tpch/nation.parquet`)")
+        .sqlQuery(
+            "select * from cp.`tpch/nation.parquet` " +
+            "where n_regionkey in ( select r_regionkey from cp.`tpch/region.parquet`) and " +
+            "      n_name in (select n_name from cp.`tpch/nation.parquet`)")
+        .sqlBaselineQuery("select n_nationkey, n_name, n_regionkey, n_comment from cp.`tpch/nation.parquet` " +
+            "where n_regionkey in ( select r_regionkey from cp.`tpch/region.parquet`) and " +
+            "      n_name in (select n_name from cp.`tpch/nation.parquet`)")
         .build().run();
 
-System.out.println("Next Test");
 
     // Both the out QB and SUBQ are join.
     testBuilder()
