@@ -126,6 +126,7 @@ public class SystemOptionManager extends BaseOptionManager implements AutoClosea
       new OptionDefinition(ExecConstants.HASHJOIN_ENABLE_RUNTIME_FILTER),
       new OptionDefinition(ExecConstants.HASHJOIN_BLOOM_FILTER_MAX_SIZE),
       new OptionDefinition(ExecConstants.HASHJOIN_BLOOM_FILTER_FPP_VALIDATOR),
+      new OptionDefinition(ExecConstants.HASHJOIN_SEMI_SKIP_DUPLICATES_VALIDATOR),
       // ------------------------------------------- Index planning related options BEGIN --------------------------------------------------------------
       new OptionDefinition(PlannerSettings.USE_SIMPLE_OPTIMIZER),
       new OptionDefinition(PlannerSettings.INDEX_PLANNING),

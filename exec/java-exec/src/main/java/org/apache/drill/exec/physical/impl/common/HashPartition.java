@@ -126,9 +126,10 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
   private long numInMemoryRecords;
   private boolean updatedRecordsPerBatch = false;
   private boolean semiJoin;
+  private boolean skipDuplicates; // only for semi
 
   public HashPartition(FragmentContext context, BufferAllocator allocator, ChainedHashTable baseHashTable,
-                       RecordBatch buildBatch, RecordBatch probeBatch, boolean semiJoin,
+                       RecordBatch buildBatch, RecordBatch probeBatch, boolean semiJoin, boolean skipDuplicates,
                        int recordsPerBatch, SpillSet spillSet, int partNum, int cycleNum, int numPartitions) {
     this.allocator = allocator;
     this.buildBatch = buildBatch;
@@ -139,6 +140,7 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
     this.cycleNum = cycleNum;
     this.numPartitions = numPartitions;
     this.semiJoin = semiJoin;
+    this.skipDuplicates = semiJoin && skipDuplicates;
 
     try {
       this.hashTable = baseHashTable.createAndSetupHashTable(null);
@@ -223,6 +225,25 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
     currentBatch = allocateNewVectorContainer(processingOuter ? probeBatch : buildBatch);
     currHVVector = new IntVector(MaterializedField.create(HASH_VALUE_COLUMN_NAME, HVtype), allocator);
     currHVVector.allocateNew(recordsPerBatch);
+  }
+
+  /**
+   *
+   */
+  public boolean insertKeyIntoHashTable(VectorContainer buildContainer, int ind, int hashCode) throws SchemaChangeException {
+    hashTable.updateIncoming(buildContainer, probeBatch );
+    final IndexPointer htIndex = new IndexPointer();
+    HashTable.PutStatus status = HashTable.PutStatus.PUT_FAILED;
+
+    try {
+      status = hashTable.put(ind, htIndex, hashCode, BATCH_SIZE);
+    } catch (RetryAfterSpillException RE) {
+      hashTable.reset(); // free the hash table to save memory
+      spillThisPartition();
+      return false;
+    }
+
+    return status == HashTable.PutStatus.KEY_PRESENT;
   }
 
   /**
@@ -326,6 +347,10 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
   public void spillThisPartition() {
     if ( tmpBatchesList.size() == 0 ) { return; } // in case empty - nothing to spill
     logger.debug("HashJoin: Spilling partition {}, current cycle {}, part size {} batches", partitionNum, cycleNum, tmpBatchesList.size());
+
+    if ( skipDuplicates ) {
+      hashTable.reset();
+    } // deallocate and reinit the hash table in case of a semi skipping dupl
 
     // If this is the first spill for this partition, create an output stream
     if ( writer == null ) {
@@ -500,38 +525,40 @@ public class HashPartition implements HashJoinMemoryCalculator.PartitionStat {
   public void buildContainersHashTableAndHelper() throws SchemaChangeException {
     if ( isSpilled ) { return; } // no building for spilled partitions
     containers = new ArrayList<>();
-    hashTable.updateInitialCapacity((int) getNumInMemoryRecords());
+    if ( ! skipDuplicates ) { hashTable.updateInitialCapacity((int) getNumInMemoryRecords()); }
     for (int curr = 0; curr < partitionBatchesCount; curr++) {
       VectorContainer nextBatch = tmpBatchesList.get(curr);
-      final int currentRecordCount = nextBatch.getRecordCount();
 
-      // For every incoming build batch, we create a matching helper batch
-      if ( ! semiJoin ) { hjHelper.addNewBatch(currentRecordCount); }
+      if ( ! skipDuplicates ) { // if skipping dupl, then the hash table is already made (and no need for helper)
+        final int currentRecordCount = nextBatch.getRecordCount();
 
-      // Holder contains the global index where the key is hashed into using the hash table
-      final IndexPointer htIndex = new IndexPointer();
+        // For every incoming build batch, we create a matching helper batch
+        if ( ! semiJoin ) { hjHelper.addNewBatch(currentRecordCount); }
 
-      assert nextBatch != null;
-      assert probeBatch != null;
+        // Holder contains the global index where the key is hashed into using the hash table
+        final IndexPointer htIndex = new IndexPointer();
 
-      hashTable.updateIncoming(nextBatch, probeBatch );
+        assert nextBatch != null;
+        assert probeBatch != null;
 
-      IntVector HV_vector = (IntVector) nextBatch.getLast();
+        hashTable.updateIncoming(nextBatch, probeBatch);
 
-      for (int recInd = 0; recInd < currentRecordCount; recInd++) {
-        int hashCode = HV_vector.getAccessor().get(recInd);
-        try {
-          hashTable.put(recInd, htIndex, hashCode, BATCH_SIZE);
-        } catch (RetryAfterSpillException RE) {
-          throw new OutOfMemoryException("HT put");
-        } // Hash Join does not retry
-        /* Use the global index returned by the hash table, to store
-         * the current record index and batch index. This will be used
-         * later when we probe and find a match.
-         */
-        if ( ! semiJoin ) { hjHelper.setCurrentIndex(htIndex.value, curr /* buildBatchIndex */, recInd); }
+        IntVector HV_vector = (IntVector) nextBatch.getLast();
+
+        for (int recInd = 0; recInd < currentRecordCount; recInd++) {
+          int hashCode = HV_vector.getAccessor().get(recInd);
+          try {
+            hashTable.put(recInd, htIndex, hashCode, BATCH_SIZE);
+          } catch (RetryAfterSpillException RE) {
+            throw new OutOfMemoryException("HT put");
+          } // Hash Join does not retry
+          /* Use the global index returned by the hash table, to store
+           * the current record index and batch index. This will be used
+           * later when we probe and find a match.
+           */
+          if ( ! semiJoin ) { hjHelper.setCurrentIndex(htIndex.value, curr /* buildBatchIndex */, recInd); }
+        }
       }
-
       containers.add(nextBatch);
     }
     outerBatchAllocNotNeeded = true; // the inner is whole in memory, no need for an outer batch
