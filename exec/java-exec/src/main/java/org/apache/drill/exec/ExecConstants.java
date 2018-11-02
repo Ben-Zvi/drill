@@ -151,7 +151,9 @@ public final class ExecConstants {
   public static final IntegerValidator HASHJOIN_BLOOM_FILTER_MAX_SIZE = new IntegerValidator(HASHJOIN_BLOOM_FILTER_MAX_SIZE_KEY, null);
   public static final String HASHJOIN_BLOOM_FILTER_FPP_KEY = "exec.hashjoin.bloom_filter.fpp";
   public static final DoubleValidator HASHJOIN_BLOOM_FILTER_FPP_VALIDATOR = new RangeDoubleValidator(HASHJOIN_BLOOM_FILTER_FPP_KEY, Double.MIN_VALUE, 1.0, null);
-
+  public static final String HASHJOIN_SEMI_SKIP_DUPLICATES_KEY = "exec.hashjoin.semi_skip_duplicates";
+  public static final BooleanValidator HASHJOIN_SEMI_SKIP_DUPLICATES_VALIDATOR = new BooleanValidator(HASHJOIN_SEMI_SKIP_DUPLICATES_KEY,
+    new OptionDescription("When TRUE, make Semi Hash Join check for incoming duplicated and skip those (use more cpu, less memory)"));
 
 
   // Hash Aggregate Options
