@@ -20,11 +20,13 @@ package org.apache.drill.exec.physical.impl.common;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import javax.inject.Named;
 
 import org.apache.drill.exec.expr.ClassGenerator;
 import org.apache.drill.exec.ops.FragmentContext;
+import org.apache.drill.shaded.guava.com.google.common.base.Stopwatch;
 import org.apache.drill.shaded.guava.com.google.common.collect.Sets;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.drill.common.types.TypeProtos.MinorType;
@@ -64,6 +66,13 @@ public abstract class HashTableTemplate implements HashTable {
   //  This is the "classic hash table", where  Hash-Value % size-of-table  yields
   // the offset/position (in the startIndices) of the beginning of the hash chain.
   private IntVector startIndices;
+
+
+  private long count;
+  private long sumTime;
+  private long maxTime;
+  private long secondMaxTime;
+  private long thirdMaxTime;
 
   // Array of batch holders..each batch holder can hold up to BATCH_SIZE entries
   private ArrayList<BatchHolder> batchHolders;
@@ -224,7 +233,21 @@ public abstract class HashTableTemplate implements HashTable {
       if (isProbe) {
         match = isKeyMatchInternalProbe(incomingRowIdx, currentIdxWithinBatch);
       } else {
+        Stopwatch watch = Stopwatch.createStarted();
         match = isKeyMatchInternalBuild(incomingRowIdx, currentIdxWithinBatch);
+        long total = watch.elapsed(TimeUnit.MICROSECONDS);
+        if ( total > maxTime ) {
+          thirdMaxTime = secondMaxTime;
+          secondMaxTime = maxTime;
+          maxTime = total;
+        } else if ( total > secondMaxTime ) {
+          thirdMaxTime = secondMaxTime;
+          secondMaxTime = total;
+        } else if ( total > thirdMaxTime ) {
+          thirdMaxTime = total;
+        }
+        count++;
+        sumTime += total;
       }
 
       if (!match) {
@@ -562,6 +585,11 @@ public abstract class HashTableTemplate implements HashTable {
   }
 
   private void clear(boolean close) {
+    if ( maxTime > 50 ) {
+      logger.warn("Hash-Table build key matching: Count {}, Time: Total {}, Max {}, 2nd {}, 3rd {}",
+        count, sumTime, maxTime, secondMaxTime, thirdMaxTime);
+      count = sumTime = maxTime = 0;
+    }
     if (close) {
       // If we are closing, we need to clear the htContainerOrig as well.
       htContainerOrig.clear();
