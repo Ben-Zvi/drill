@@ -73,6 +73,7 @@ public abstract class HashTableTemplate implements HashTable {
   private long maxTime;
   private long secondMaxTime;
   private long thirdMaxTime;
+  private long zeroes;
 
   // Array of batch holders..each batch holder can hold up to BATCH_SIZE entries
   private ArrayList<BatchHolder> batchHolders;
@@ -217,37 +218,43 @@ public abstract class HashTableTemplate implements HashTable {
     // Check if the key at the currentIdx position in hash table matches the key
     // at the incomingRowIdx. if the key does not match, update the
     // currentIdxHolder with the index of the next link.
-    private boolean isKeyMatch(int incomingRowIdx,
-        IndexPointer currentIdxHolder,
-        boolean isProbe) throws SchemaChangeException {
+    private boolean isKeyMatch(int incomingRowIdx, IndexPointer currentIdxHolder, int incomingHashValue, boolean isProbe) throws SchemaChangeException {
       int currentIdxWithinBatch = currentIdxHolder.value & BATCH_MASK;
-      boolean match;
+      boolean match = false;
 
-      if (currentIdxWithinBatch >= batchHolders.get((currentIdxHolder.value >>> 16) & BATCH_MASK).getTargetBatchRowCount()) {
-        logger.debug("Batch size = {}, incomingRowIdx = {}, currentIdxWithinBatch = {}.",
-          batchHolders.get((currentIdxHolder.value >>> 16) & BATCH_MASK).getTargetBatchRowCount(), incomingRowIdx, currentIdxWithinBatch);
+      if ( logger.isDebugEnabled() ) { // issue a debug message if out of bounds
+        if (currentIdxWithinBatch >= batchHolders.get((currentIdxHolder.value >>> 16) & BATCH_MASK).getTargetBatchRowCount()) {
+          logger.debug("Batch size = {}, incomingRowIdx = {}, currentIdxWithinBatch = {}.", batchHolders.get((currentIdxHolder.value >>> 16) & BATCH_MASK).getTargetBatchRowCount(), incomingRowIdx, currentIdxWithinBatch);
+        }
       }
       assert (currentIdxWithinBatch < batchHolders.get((currentIdxHolder.value >>> 16) & BATCH_MASK).getTargetBatchRowCount());
       assert (incomingRowIdx < HashTable.BATCH_SIZE);
 
-      if (isProbe) {
-        match = isKeyMatchInternalProbe(incomingRowIdx, currentIdxWithinBatch);
-      } else {
-        Stopwatch watch = Stopwatch.createStarted();
-        match = isKeyMatchInternalBuild(incomingRowIdx, currentIdxWithinBatch);
-        long total = watch.elapsed(TimeUnit.MICROSECONDS);
-        if ( total > maxTime ) {
-          thirdMaxTime = secondMaxTime;
-          secondMaxTime = maxTime;
-          maxTime = total;
-        } else if ( total > secondMaxTime ) {
-          thirdMaxTime = secondMaxTime;
-          secondMaxTime = total;
-        } else if ( total > thirdMaxTime ) {
-          thirdMaxTime = total;
+      int currentHashValue = hashValues.getAccessor().get(currentIdxWithinBatch);
+
+      if ( currentHashValue == incomingHashValue ) { // else no need to compare keys
+        if (isProbe) {
+          match = isKeyMatchInternalProbe(incomingRowIdx, currentIdxWithinBatch);
+        } else {
+          Stopwatch watch = Stopwatch.createStarted();
+          match = isKeyMatchInternalBuild(incomingRowIdx, currentIdxWithinBatch);
+          long total = watch.elapsed(TimeUnit.MICROSECONDS);
+          if (total > maxTime) {
+            if ( incomingHashValue == 0 ) { zeroes++; }
+            thirdMaxTime = secondMaxTime;
+            secondMaxTime = maxTime;
+            maxTime = total;
+          } else if (total > secondMaxTime) {
+            if ( incomingHashValue == 0 ) { zeroes++; }
+            thirdMaxTime = secondMaxTime;
+            secondMaxTime = total;
+          } else if (total > thirdMaxTime) {
+            if ( incomingHashValue == 0 ) { zeroes++; }
+            thirdMaxTime = total;
+          }
+          count++;
+          sumTime += total;
         }
-        count++;
-        sumTime += total;
       }
 
       if (!match) {
@@ -586,9 +593,9 @@ public abstract class HashTableTemplate implements HashTable {
 
   private void clear(boolean close) {
     if ( maxTime > 50 ) {
-      logger.warn("Hash-Table build key matching: Count {}, Time: Total {}, Max {}, 2nd {}, 3rd {}",
-        count, sumTime, maxTime, secondMaxTime, thirdMaxTime);
-      count = sumTime = maxTime = 0;
+      logger.warn("Hash-Table build key matching: Count {}, Zeroes {}, Time: Total {}, Max {}, 2nd {}, 3rd {}",
+        count, zeroes,sumTime, maxTime, secondMaxTime, thirdMaxTime);
+      count = sumTime = maxTime = zeroes = 0;
     }
     if (close) {
       // If we are closing, we need to clear the htContainerOrig as well.
@@ -697,7 +704,7 @@ public abstract class HashTableTemplate implements HashTable {
       lastEntryBatch = batchHolders.get((currentIdxHolder.value >>> 16) & BATCH_MASK);
       lastEntryIdxWithinBatch = currentIdxHolder.value & BATCH_MASK;
 
-      if (lastEntryBatch.isKeyMatch(incomingRowIdx, currentIdxHolder, false)) {
+      if (lastEntryBatch.isKeyMatch(incomingRowIdx, currentIdxHolder, hashCode, false)) {
         htIdxHolder.value = currentIdxHolder.value;
         return PutStatus.KEY_PRESENT;
       }
@@ -770,7 +777,7 @@ public abstract class HashTableTemplate implements HashTable {
     for ( currentIdxHolder.value = startIndices.getAccessor().get(bucketIndex);
           currentIdxHolder.value != EMPTY_SLOT; ) {
       BatchHolder bh = batchHolders.get((currentIdxHolder.value >>> 16) & BATCH_MASK);
-      if (bh.isKeyMatch(incomingRowIdx, currentIdxHolder, true /* isProbe */)) {
+      if (bh.isKeyMatch(incomingRowIdx, currentIdxHolder, hashCode, true /* isProbe */)) {
         return currentIdxHolder.value;
       }
     }
