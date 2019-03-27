@@ -32,6 +32,7 @@ import org.apache.drill.exec.compile.sig.ConstantExpressionIdentifier;
 import org.apache.drill.exec.expr.ExpressionTreeMaterializer;
 import org.apache.drill.exec.expr.fn.FunctionImplementationRegistry;
 import org.apache.drill.exec.expr.stat.RowsMatch;
+import org.apache.drill.exec.ops.OptimizerRulesContext;
 import org.apache.drill.exec.ops.UdfUtilities;
 import org.apache.drill.exec.planner.physical.PlannerSettings;
 import org.apache.drill.exec.record.MaterializedField;
@@ -66,6 +67,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static org.apache.drill.exec.ExecConstants.SKIP_RUNTIME_ROWGROUP_PRUNING_KEY;
 
 /**
  * Represents table group scan with metadata usage.
@@ -183,6 +186,15 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
 
   public void setFilter(LogicalExpression filter) {
     this.filter = filter;
+  }
+
+  /**
+   *  Set the filter (which later may be used at runtime for rowgroup prunning)
+   *  That can be disabled with a planner option.
+   */
+  public void setFilterForRuntime(LogicalExpression filterExpr, OptimizerRulesContext optimizerContext) {
+    boolean skipRuntimePruning = optimizerContext.getPlannerSettings().getOptions().getBoolean(SKIP_RUNTIME_ROWGROUP_PRUNING_KEY);
+    if ( ! skipRuntimePruning ) { setFilter(filterExpr); }
   }
 
   @Override
@@ -455,7 +467,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
   protected abstract boolean supportsFileImplicitColumns();
   protected abstract List<String> getPartitionValues(LocationProvider locationProvider);
 
-  protected boolean isImplicitOrPartCol(SchemaPath schemaPath, OptionManager optionManager) {
+  public boolean isImplicitOrPartCol(SchemaPath schemaPath, OptionManager optionManager) {
     Set<String> implicitColNames = ColumnExplorer.initImplicitFileColumns(optionManager).keySet();
     return ColumnExplorer.isPartitionColumn(optionManager, schemaPath) || implicitColNames.contains(schemaPath.getRootSegmentPath());
   }
@@ -615,7 +627,6 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
             matchAllMetadata = true;
             partitions = filterAndGetMetadata(schemaPathsInExpr, source.getPartitionsMetadata(), filterPredicate, optionManager);
           } else {
-            matchAllMetadata = false;
             overflowLevel = MetadataLevel.PARTITION;
           }
         }

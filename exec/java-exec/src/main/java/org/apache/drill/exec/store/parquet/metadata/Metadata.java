@@ -498,7 +498,7 @@ public class Metadata {
         }
         parquetTableMetadata.columnTypeInfo.put(new ColumnTypeMetadata_v3.Key(columnTypeMetadata.name), columnTypeMetadata);
         // Store column metadata only if allColumns is set to true or if the column belongs to the subset of columns specified in the refresh command
-        if (allColumns || columnSet == null || !allColumns && columnSet != null && columnSet.size() > 0 && columnSet.contains(columnSchemaName.getRootSegmentPath())) {
+        if (allColumns || columnSet == null || columnSet.contains(columnSchemaName.getRootSegmentPath())) {
           Statistics<?> stats = col.getStatistics();
           // Save the column schema info. We'll merge it into one list
           Object minValue = null;

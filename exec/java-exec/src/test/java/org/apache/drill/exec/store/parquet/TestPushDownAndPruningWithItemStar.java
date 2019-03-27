@@ -79,7 +79,8 @@ public class TestPushDownAndPruningWithItemStar extends PlanTestBase {
   public void testPushProjectIntoScanWithExpressionInFilter() throws Exception {
     String query = String.format("select o_orderdate from (select * from `%s`.`%s`) where o_custkey + o_orderkey < 5", DFS_TMP_SCHEMA, TABLE_NAME);
 
-    String[] expectedPlan = {"numFiles=3, numRowGroups=3, usedMetadataFile=false, columns=\\[`o_orderdate`, `o_custkey`, `o_orderkey`\\]"};
+    String[] expectedPlan = {"numFiles=3, numRowGroups=3, usedMetadataFile=false, filter=less_than\\(add\\(`o_custkey`, `o_orderkey`\\) , 5\\) , columns=\\[`o_orderdate`, " +
+      "`o_custkey`, `o_orderkey`\\]"};
     String[] excludedPlan = {};
 
     PlanTestBase.testPlanMatchingPatterns(query, expectedPlan, excludedPlan);
@@ -115,7 +116,8 @@ public class TestPushDownAndPruningWithItemStar extends PlanTestBase {
     String query = "select t.trans_id from (select * from cp.`store/parquet/complex/complex.parquet`) t " +
       "where t.user_info.cust_id > 28 and t.user_info.device = 'IOS5' and t.marketing_info.camp_id > 5 and t.marketing_info.keywords[2] is not null";
 
-    String[] expectedPlan = {"numFiles=1, numRowGroups=1, usedMetadataFile=false, " +
+    String[] expectedPlan = {"numFiles=1, numRowGroups=1, usedMetadataFile=false, filter=booleanAnd\\(greater_than\\(`user_info`.`cust_id`, 28\\) , equal\\(`user_info`.`device`," +
+      " 'IOS5'\\) , greater_than\\(`marketing_info`.`camp_id`, 5\\) , isnotnull\\(`marketing_info`.`keywords`\\[2\\]\\) \\) , " +
       "columns=\\[`trans_id`, `user_info`.`cust_id`, `user_info`.`device`, `marketing_info`.`camp_id`, `marketing_info`.`keywords`\\[2\\]\\]"};
     String[] excludedPlan = {};
 
@@ -218,7 +220,8 @@ public class TestPushDownAndPruningWithItemStar extends PlanTestBase {
   public void testFilterPushDownSingleCondition() throws Exception {
     String query = String.format("select * from (select * from `%s`.`%s`) where o_orderdate = date '1992-01-01'", DFS_TMP_SCHEMA, TABLE_NAME);
 
-    String[] expectedPlan = {"numFiles=1, numRowGroups=1, usedMetadataFile=false, columns=\\[`\\*\\*`, `o_orderdate`\\]"};
+    String[] expectedPlan = {"numFiles=1, numRowGroups=1, usedMetadataFile=false, filter=equal\\(`o_orderdate`, cast\\( 694224000000 as DATE\\)\\) , columns=\\[`\\*\\*`, " +
+      "`o_orderdate`\\]"};
     String[] excludedPlan = {};
 
     PlanTestBase.testPlanMatchingPatterns(query, expectedPlan, excludedPlan);
@@ -235,7 +238,8 @@ public class TestPushDownAndPruningWithItemStar extends PlanTestBase {
     String query = String.format("select * from (select * from `%s`.`%s`) where o_orderdate = date '1992-01-01' or o_orderdate = date '1992-01-09'",
         DFS_TMP_SCHEMA, TABLE_NAME);
 
-    String[] expectedPlan = {"numFiles=2, numRowGroups=2, usedMetadataFile=false, columns=\\[`\\*\\*`, `o_orderdate`\\]"};
+    String[] expectedPlan = {"numFiles=2, numRowGroups=2, usedMetadataFile=false, filter=booleanOr\\(equal\\(`o_orderdate`, cast\\( 694224000000 as DATE\\)\\) , equal" +
+      "\\(`o_orderdate`, cast\\( 694915200000 as DATE\\)\\) \\) , columns=\\[`\\*\\*`, `o_orderdate`\\]"};
     String[] excludedPlan = {};
 
     PlanTestBase.testPlanMatchingPatterns(query, expectedPlan, excludedPlan);
@@ -253,7 +257,8 @@ public class TestPushDownAndPruningWithItemStar extends PlanTestBase {
     String subQuery = String.format("select * from `%s`.`%s`", DFS_TMP_SCHEMA, TABLE_NAME);
     String query = String.format("select * from (select * from (select * from (%s))) where o_orderdate = date '1992-01-01'", subQuery);
 
-    String[] expectedPlan = {"numFiles=1, numRowGroups=1, usedMetadataFile=false, columns=\\[`\\*\\*`, `o_orderdate`\\]"};
+    String[] expectedPlan = {"numFiles=1, numRowGroups=1, usedMetadataFile=false, filter=equal\\(`o_orderdate`, cast\\( 694224000000 as DATE\\)\\) , columns=\\[`\\*\\*`, " +
+      "`o_orderdate`\\]"};
     String[] excludedPlan = {};
 
     PlanTestBase.testPlanMatchingPatterns(query, expectedPlan, excludedPlan);
@@ -270,7 +275,8 @@ public class TestPushDownAndPruningWithItemStar extends PlanTestBase {
     String subQuery = String.format("select * from `%s`.`%s`", DFS_TMP_SCHEMA, TABLE_NAME);
     String query = String.format("select * from (select * from (select *, o_custkey from (%s))) where o_orderdate = date '1992-01-01'", subQuery);
 
-    String[] expectedPlan = {"numFiles=1, numRowGroups=1, usedMetadataFile=false, columns=\\[`\\*\\*`, `o_custkey`, `o_orderdate`\\]"};
+    String[] expectedPlan = {"numFiles=1, numRowGroups=1, usedMetadataFile=false, filter=equal\\(`o_orderdate`, cast\\( 694224000000 as DATE\\)\\) , columns=\\[`\\*\\*`, " +
+      "`o_custkey`, `o_orderdate`\\]"};
     String[] excludedPlan = {};
 
     PlanTestBase.testPlanMatchingPatterns(query, expectedPlan, excludedPlan);

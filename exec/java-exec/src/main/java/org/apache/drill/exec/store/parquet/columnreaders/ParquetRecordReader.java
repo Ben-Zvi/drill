@@ -96,6 +96,8 @@ public class ParquetRecordReader extends AbstractRecordReader {
   private BatchReader batchReader;
 
   public enum Metric implements MetricDef {
+    NUM_ROWGROUPS,               // Number of rowgroups assigned to this minor fragment
+    ROWGROUPS_PRUNED,            // Number of rowgroups pruned out at runtime
     NUM_DICT_PAGE_LOADS,         // Number of dictionary pages read
     NUM_DATA_PAGE_lOADS,         // Number of data pages read
     NUM_DATA_PAGES_DECODED,      // Number of data pages decoded
@@ -246,7 +248,9 @@ public class ParquetRecordReader extends AbstractRecordReader {
 
     try {
       schema.buildSchema();
-      batchSizerMgr.setup();
+      // if ( numRecordsToRead > 0 ) { // when reading schema only, skip setting the batch sizer (its code asserts on zero)
+        batchSizerMgr.setup();
+      // }
       readState = new ReadState(schema, batchSizerMgr, parquetReaderStats, numRecordsToRead, useAsyncColReader);
       readState.buildReader(this, output);
     } catch (Exception e) {
@@ -330,6 +334,11 @@ public class ParquetRecordReader extends AbstractRecordReader {
 
   private void updateStats() {
     parquetReaderStats.update(operatorContext.getStats());
+  }
+
+  public void updateRowgroupsStats(long numRowgroups, long rowgroupsPruned) {
+    parquetReaderStats.numRowgroups.set(numRowgroups);
+    parquetReaderStats.rowgroupsPruned.set(rowgroupsPruned);
   }
 
   @Override
