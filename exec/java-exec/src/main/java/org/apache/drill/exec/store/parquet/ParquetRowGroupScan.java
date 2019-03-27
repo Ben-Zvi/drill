@@ -46,7 +46,6 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
 
   private final ParquetFormatPlugin formatPlugin;
   private final ParquetFormatConfig formatConfig;
-  private final Path selectionRoot;
 
   @JsonCreator
   public ParquetRowGroupScan(@JacksonInject StoragePluginRegistry registry,
@@ -74,10 +73,9 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
                              ParquetReaderConfig readerConfig,
                              Path selectionRoot,
                              LogicalExpression filter) {
-    super(userName, rowGroupReadEntries, columns, readerConfig, filter);
+    super(userName, rowGroupReadEntries, columns, readerConfig, filter, selectionRoot);
     this.formatPlugin = Preconditions.checkNotNull(formatPlugin, "Could not find format config for the given configuration");
     this.formatConfig = formatPlugin.getConfig();
-    this.selectionRoot = selectionRoot;
   }
 
   @JsonProperty
@@ -90,11 +88,6 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
     return formatConfig;
   }
 
-  @JsonProperty
-  public Path getSelectionRoot() {
-    return selectionRoot;
-  }
-
   @JsonIgnore
   public ParquetFormatPlugin getStorageEngine() {
     return formatPlugin;
@@ -103,7 +96,7 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
   @Override
   public PhysicalOperator getNewWithChildren(List<PhysicalOperator> children) {
     Preconditions.checkArgument(children.isEmpty());
-    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, selectionRoot, filter);
+    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, getSelectionRoot(), filter);
   }
 
   @Override
@@ -113,7 +106,7 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
 
   @Override
   public AbstractParquetRowGroupScan copy(List<SchemaPath> columns) {
-    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, selectionRoot, filter);
+    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, getSelectionRoot(), filter);
   }
 
   @Override
@@ -123,12 +116,12 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
 
   @Override
   public boolean supportsFileImplicitColumns() {
-    return selectionRoot != null;
+    return getSelectionRoot() != null;
   }
 
   @Override
   public List<String> getPartitionValues(RowGroupReadEntry rowGroupReadEntry) {
-    return ColumnExplorer.listPartitionValues(rowGroupReadEntry.getPath(), selectionRoot, false);
+    return ColumnExplorer.listPartitionValues(rowGroupReadEntry.getPath(), getSelectionRoot(), false);
   }
 }
 
