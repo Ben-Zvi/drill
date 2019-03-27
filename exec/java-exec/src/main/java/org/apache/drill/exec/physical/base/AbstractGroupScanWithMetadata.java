@@ -82,6 +82,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
 
   protected List<SchemaPath> partitionColumns;
   protected LogicalExpression filter;
+  protected FilterPredicate filterPredicate;
   protected List<SchemaPath> columns;
 
   protected Map<Path, FileMetadata> files;
@@ -181,6 +182,10 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
     return filter;
   }
 
+  public FilterPredicate getFilterPredicate() {
+    return filterPredicate;
+  }
+
   public void setFilter(LogicalExpression filter) {
     this.filter = filter;
   }
@@ -190,7 +195,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
       FunctionImplementationRegistry functionImplementationRegistry, OptionManager optionManager) {
 
     // Builds filter for pruning. If filter cannot be built, null should be returned.
-    FilterPredicate filterPredicate = getFilterPredicate(filterExpr, udfUtilities, functionImplementationRegistry, optionManager, true);
+    filterPredicate = getFilterPredicate(filterExpr, udfUtilities, functionImplementationRegistry, optionManager, true);
     if (filterPredicate == null) {
       logger.debug("FilterPredicate cannot be built.");
       return null;
@@ -455,7 +460,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
   protected abstract boolean supportsFileImplicitColumns();
   protected abstract List<String> getPartitionValues(LocationProvider locationProvider);
 
-  protected boolean isImplicitOrPartCol(SchemaPath schemaPath, OptionManager optionManager) {
+  public boolean isImplicitOrPartCol(SchemaPath schemaPath, OptionManager optionManager) {
     Set<String> implicitColNames = ColumnExplorer.initImplicitFileColumns(optionManager).keySet();
     return ColumnExplorer.isPartitionColumn(optionManager, schemaPath) || implicitColNames.contains(schemaPath.getRootSegmentPath());
   }
@@ -615,7 +620,6 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
             matchAllMetadata = true;
             partitions = filterAndGetMetadata(schemaPathsInExpr, source.getPartitionsMetadata(), filterPredicate, optionManager);
           } else {
-            matchAllMetadata = false;
             overflowLevel = MetadataLevel.PARTITION;
           }
         }
