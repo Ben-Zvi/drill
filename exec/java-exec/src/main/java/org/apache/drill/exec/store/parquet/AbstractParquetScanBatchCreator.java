@@ -367,60 +367,61 @@ public abstract class AbstractParquetScanBatchCreator {
           }
           ParquetMetadata footer = footers.get(rowGroup.getPath());
 
-          // Get the table metadata (V3)
-          Metadata_V3.ParquetTableMetadata_v3 mdv3 = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
+          // If a filter is given - perform a run-time pruning
+          if ( rowGroupScan.getFilter() != null ) {
 
-          // The file status for this file (must use "recursive", even for a specific file, else the code would assert)
-          FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
+            // Get the table metadata (V3)
+            Metadata_V3.ParquetTableMetadata_v3 mdv3 = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
 
-          // The file metadata (V3 - for all columns)
-          Metadata_V3.ParquetFileMetadata_v3 mdfv3 = getParquetFileMetadata_v3(mdv3, fileStatus, fs, true, null, readerConfig);
+            // The file status for this file (must use "recursive", even for a specific file, else the code would assert)
+            FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
+
+            // The file metadata (V3 - for all columns)
+            Metadata_V3.ParquetFileMetadata_v3 mdfv3 = getParquetFileMetadata_v3(mdv3, fileStatus, fs, true, null, readerConfig);
 
 
-          MetadataBase.ParquetTableMetadataBase tableMetadata = mdv3.clone();
+            MetadataBase.ParquetTableMetadataBase tableMetadata = mdv3.clone();
 
-          MetadataBase.RowGroupMetadata rowGroupMetadata =  mdfv3.getRowGroups().get(rowGroup.getRowGroupIndex());
+            MetadataBase.RowGroupMetadata rowGroupMetadata = mdfv3.getRowGroups().get(rowGroup.getRowGroupIndex());
 
-          Map<SchemaPath, ColumnStatistics> columnsStatistics = ParquetTableMetadataUtils.getRowGroupColumnStatistics(tableMetadata, rowGroupMetadata);
+            Map<SchemaPath, ColumnStatistics> columnsStatistics = ParquetTableMetadataUtils.getRowGroupColumnStatistics(tableMetadata, rowGroupMetadata);
 
-          List<SchemaPath> columns = columnsStatistics.keySet().stream().collect(Collectors.toList());
+            List<SchemaPath> columns = columnsStatistics.keySet().stream().collect(Collectors.toList());
 
-          List<FileStatus> lfs = new ArrayList<>();
-          lfs.add(fileStatus);
-          List<Path> lp = new ArrayList<>();
-          lp.add(rowGroup.getPath());
+            List<FileStatus> lfs = new ArrayList<>();
+            lfs.add(fileStatus);
+            List<Path> lp = new ArrayList<>();
+            lp.add(rowGroup.getPath());
 
-          Path selectionRoot =  ((ParquetRowGroupScan)rowGroupScan).getSelectionRoot();
+            Path selectionRoot = ((ParquetRowGroupScan) rowGroupScan).getSelectionRoot();
 
-          FileSelection fileSelection = new FileSelection(lfs /*List<FileStatus> statuses */, lp /*List<Path> file*/, selectionRoot);
+            FileSelection fileSelection = new FileSelection(lfs /*List<FileStatus> statuses */, lp /*List<Path> file*/, selectionRoot);
 
-          Path cacheFileRoot = fileSelection.cacheFileRoot;
+            Path cacheFileRoot = fileSelection.cacheFileRoot;
 
-          List<ReadEntryWithPath> entries =  new ArrayList<>();
-          ReadEntryWithPath rewp = new ReadEntryWithPath(rowGroup.getPath());
-           entries.add(rewp);
+            List<ReadEntryWithPath> entries = new ArrayList<>();
+            ReadEntryWithPath rewp = new ReadEntryWithPath(rowGroup.getPath());
+            entries.add(rewp);
 
-          ParquetTableMetadataProviderImpl metadataProvider = new ParquetTableMetadataProviderImpl(entries, selectionRoot, cacheFileRoot,
-            readerConfig, fs, false);
+            ParquetTableMetadataProviderImpl metadataProvider = new ParquetTableMetadataProviderImpl(entries, selectionRoot, cacheFileRoot, readerConfig, fs, false);
 
-          ParquetGroupScan pgs = new ParquetGroupScan("", metadataProvider, fileSelection, columns, readerConfig, rowGroupScan.getFilter());
+            ParquetGroupScan pgs = new ParquetGroupScan("", metadataProvider, fileSelection, columns, readerConfig, rowGroupScan.getFilter());
 
-          FilterPredicate filterPredicate = getFilterPredicate(pgs, rowGroupScan.getFilter() /*filterExpr*/, context /*udfUtilities*/,
-            (FunctionImplementationRegistry)context.getFunctionRegistry(),
-            context.getOptions(), true);
+            FilterPredicate filterPredicate = getFilterPredicate(pgs, rowGroupScan.getFilter() /*filterExpr*/, context /*udfUtilities*/, (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true);
 
-          //
-          // Perform the Run-Time Prunning - i.e. Skip this rowgroup if the match fails
-          //
-          RowsMatch match = FilterEvaluatorUtils.matches(filterPredicate, columnsStatistics, footer.getBlocks().get(rowGroup.getRowGroupIndex()).getRowCount());
-          if (match == RowsMatch.NONE) {
-            logger.warn("Prunning out rowGroup {}",rowGroup.getPath());
-            rowgroupsPruned++; // one more was pruned
-            if ( firstRowGroup == null ) {  // keep first, in case all row groups are pruned
-              firstRowGroup = rowGroup;
-              firstFooter = footer;
+            //
+            // Perform the Run-Time Prunning - i.e. Skip this rowgroup if the match fails
+            //
+            RowsMatch match = FilterEvaluatorUtils.matches(filterPredicate, columnsStatistics, footer.getBlocks().get(rowGroup.getRowGroupIndex()).getRowCount());
+            if (match == RowsMatch.NONE) {
+              logger.warn("Prunning out rowGroup {}", rowGroup.getPath());
+              rowgroupsPruned++; // one more was pruned
+              if (firstRowGroup == null) {  // keep first, in case all row groups are pruned
+                firstRowGroup = rowGroup;
+                firstFooter = footer;
+              }
+              continue; // This Row group does not comply with the filter - prune it out and check the next one
             }
-            continue; // This Row group does not comply with the filter - prune it out and check the next one
           }
 
           mapWithMaxColumns = createReaderAndImplicitColumns(context, rowGroupScan, oContext, columnExplorer, readers, implicitColumns, mapWithMaxColumns, rowGroup,
