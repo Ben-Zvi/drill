@@ -143,7 +143,7 @@ public class HiveDrillNativeParquetScan extends AbstractParquetGroupScan {
       subPartitionHolder.add(readEntry.getPath(), values);
     }
     return new HiveDrillNativeParquetRowGroupScan(getUserName(), hiveStoragePlugin, readEntries, columns, subPartitionHolder,
-      confProperties, readerConfig, filter);
+      confProperties, readerConfig, filter, getTableMetadata().getSchema());
   }
 
   @Override
