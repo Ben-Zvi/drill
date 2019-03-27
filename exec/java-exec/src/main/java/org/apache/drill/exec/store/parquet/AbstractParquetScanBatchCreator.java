@@ -371,8 +371,8 @@ public abstract class AbstractParquetScanBatchCreator {
           // Get the table metadata (V3)
           Metadata_V3.ParquetTableMetadata_v3 mdv3 = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
 
-          // The file status for this file
-          FileStatus fileStatus = DrillFileSystemUtil.listAll(fs, rowGroup.getPath(), false).get(0);
+          // The file status for this file (must use "recursive", even for a specific file, else the code would assert)
+          FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
 
           // The file metadata (V3 - for all columns)
           Metadata_V3.ParquetFileMetadata_v3 mdfv3 = getParquetFileMetadata_v3(mdv3, fileStatus, fs, true, null, readerConfig);
@@ -429,8 +429,7 @@ public abstract class AbstractParquetScanBatchCreator {
       }
 
       // in case all row groups were pruned out - create a single reader for the first one (so that the schema could be returned)
-      if ( mapWithMaxColumns.size() == 0 ) {
-        assert firstRowGroup != null;
+      if ( mapWithMaxColumns.size() == 0 && firstRowGroup != null ) {
         DrillFileSystem fs = fsManager.get(rowGroupScan.getFsConf(firstRowGroup), firstRowGroup.getPath());
         mapWithMaxColumns = createReaderAndImplicitColumns(context, rowGroupScan, oContext, columnExplorer, readers, implicitColumns, mapWithMaxColumns, firstRowGroup, fs,
           firstFooter, true);
