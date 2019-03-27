@@ -39,7 +39,6 @@ import org.apache.drill.exec.store.dfs.ReadEntryWithPath;
 import org.apache.drill.exec.store.parquet.metadata.Metadata;
 import org.apache.drill.exec.store.parquet.metadata.MetadataBase;
 import org.apache.drill.exec.store.parquet.metadata.Metadata_V3;
-import org.apache.drill.exec.util.DrillFileSystemUtil;
 import org.apache.drill.exec.util.ImpersonationUtil;
 import org.apache.drill.metastore.ColumnStatistics;
 import org.apache.drill.shaded.guava.com.google.common.base.Functions;
