@@ -17,6 +17,7 @@
  */
 package org.apache.drill.exec.store.parquet;
 
+import org.apache.calcite.rel.core.Filter;
 import org.apache.drill.exec.physical.base.AbstractGroupScanWithMetadata;
 import org.apache.drill.exec.expr.FilterPredicate;
 import org.apache.drill.shaded.guava.com.google.common.base.Stopwatch;
@@ -190,15 +191,23 @@ public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
           call.transformTo(child);
         } else if (nonConvertedPredList.size() == predList.size()) {
           // None of the predicates participated in filter pushdown.
+          groupScan.setFilter(conditionExp); // pass the original filter expr to (potentialy) be used at run-time
           return;
         } else {
           // If some of the predicates weren't used in the filter, creates new filter with them
           // on top of current scan. Excludes the case when all predicates weren't used in the filter.
-          call.transformTo(filter.copy(filter.getTraitSet(), child,
-              RexUtil.composeConjunction(
-                  filter.getCluster().getRexBuilder(),
-                  nonConvertedPredList,
-                  true)));
+          Filter theNewFilter  = filter.copy(filter.getTraitSet(), child,
+            RexUtil.composeConjunction(
+              filter.getCluster().getRexBuilder(),
+              nonConvertedPredList,
+              true));
+
+          LogicalExpression filterPredicate = DrillOptiq.toDrill(
+            new DrillParseContext(PrelUtil.getPlannerSettings(call.getPlanner())), scan, theNewFilter.getCondition());
+
+          groupScan.setFilter(filterPredicate); // pass the new filter expr to (potentialy) be used at run-time
+
+          call.transformTo(theNewFilter); // Replace the child with the new filter on top of the child/scan
         }
       }
       return;
@@ -213,11 +222,18 @@ public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
     if (newGroupScan.isMatchAllMetadata()) {
       // creates filter from the expressions which can't be pushed to the scan
       if (!nonConvertedPredList.isEmpty()) {
-        newNode = filter.copy(filter.getTraitSet(), newNode,
-            RexUtil.composeConjunction(
-                filter.getCluster().getRexBuilder(),
-                nonConvertedPredList,
-                true));
+        Filter theFilterRel  = filter.copy(filter.getTraitSet(), newNode,
+          RexUtil.composeConjunction(
+            filter.getCluster().getRexBuilder(),
+            nonConvertedPredList,
+            true));
+
+        LogicalExpression filterPredicate = DrillOptiq.toDrill(
+          new DrillParseContext(PrelUtil.getPlannerSettings(call.getPlanner())), scan, theFilterRel.getCondition());
+
+        groupScan.setFilter(filterPredicate); // pass the new filter expr to (potentialy) be used at run-time
+
+        newNode = theFilterRel; // replace the new node with the new filter on top of that new node
       }
       call.transformTo(newNode);
       return;
