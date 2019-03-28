@@ -352,7 +352,7 @@ public class TestParquetFilterPushDown extends PlanTestBase {
 
   @Test
   // Test against parquet files from Drill CTAS post 1.8.0 release.
-  public void testDatePredicateAgaistDrillCTASPost1_8() throws Exception {
+  public void testDatePredicateAgainstDrillCTASPost1_8() throws Exception {
     test("use dfs.tmp");
     test("create table `%s/t1` as select cast(o_orderdate as date) as o_orderdate from cp.`tpch/orders.parquet` where o_orderdate between date '1992-01-01' and " +
       "date '1992-01-03'", CTAS_TABLE);

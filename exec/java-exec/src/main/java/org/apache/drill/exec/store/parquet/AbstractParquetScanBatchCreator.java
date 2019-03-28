@@ -367,7 +367,9 @@ public abstract class AbstractParquetScanBatchCreator {
           }
           ParquetMetadata footer = footers.get(rowGroup.getPath());
 
-          // If a filter is given - perform a run-time pruning
+          //
+          //   If a filter is given - use it to perform run-time pruning
+          //
           if ( rowGroupScan.getFilter() != null ) {
 
             // Get the table metadata (V3)
@@ -393,7 +395,7 @@ public abstract class AbstractParquetScanBatchCreator {
             List<Path> lp = new ArrayList<>();
             lp.add(rowGroup.getPath());
 
-            Path selectionRoot = ((ParquetRowGroupScan) rowGroupScan).getSelectionRoot();
+            Path selectionRoot = rowGroupScan.getSelectionRoot();
 
             FileSelection fileSelection = new FileSelection(lfs /*List<FileStatus> statuses */, lp /*List<Path> file*/, selectionRoot);
 
@@ -410,7 +412,7 @@ public abstract class AbstractParquetScanBatchCreator {
             FilterPredicate filterPredicate = getFilterPredicate(pgs, rowGroupScan.getFilter() /*filterExpr*/, context /*udfUtilities*/, (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true);
 
             //
-            // Perform the Run-Time Prunning - i.e. Skip this rowgroup if the match fails
+            // Perform the Run-Time Pruning - i.e. Skip this rowgroup if the match fails
             //
             RowsMatch match = FilterEvaluatorUtils.matches(filterPredicate, columnsStatistics, footer.getBlocks().get(rowGroup.getRowGroupIndex()).getRowCount());
             if (match == RowsMatch.NONE) {
