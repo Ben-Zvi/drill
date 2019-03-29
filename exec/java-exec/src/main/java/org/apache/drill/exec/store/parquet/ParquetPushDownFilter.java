@@ -188,6 +188,7 @@ public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
         // If current row group fully matches filter,
         // but row group pruning did not happen, remove the filter.
         if (nonConvertedPredList.isEmpty()) {
+          groupScan.setFilter(null); // disable the original filter expr (potentialy used at run-time)
           call.transformTo(child);
         } else if (nonConvertedPredList.size() == predList.size()) {
           // None of the predicates participated in filter pushdown.

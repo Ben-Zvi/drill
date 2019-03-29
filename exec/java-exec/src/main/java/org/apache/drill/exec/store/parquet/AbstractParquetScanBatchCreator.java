@@ -431,7 +431,7 @@ public abstract class AbstractParquetScanBatchCreator {
       }
 
       // in case all row groups were pruned out - create a single reader for the first one (so that the schema could be returned)
-      if ( mapWithMaxColumns.size() == 0 && firstRowGroup != null ) {
+      if ( readers.size() == 0 && firstRowGroup != null ) {
         DrillFileSystem fs = fsManager.get(rowGroupScan.getFsConf(firstRowGroup), firstRowGroup.getPath());
         mapWithMaxColumns = createReaderAndImplicitColumns(context, rowGroupScan, oContext, columnExplorer, readers, implicitColumns, mapWithMaxColumns, firstRowGroup, fs,
           firstFooter, true);
