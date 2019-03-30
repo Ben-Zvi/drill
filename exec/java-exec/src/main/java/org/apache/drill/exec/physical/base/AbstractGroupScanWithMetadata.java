@@ -82,7 +82,6 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
 
   protected List<SchemaPath> partitionColumns;
   protected LogicalExpression filter;
-  protected FilterPredicate filterPredicate;
   protected List<SchemaPath> columns;
 
   protected Map<Path, FileMetadata> files;
@@ -182,10 +181,6 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
     return filter;
   }
 
-  public FilterPredicate getFilterPredicate() {
-    return filterPredicate;
-  }
-
   public void setFilter(LogicalExpression filter) {
     this.filter = filter;
   }
@@ -195,7 +190,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
       FunctionImplementationRegistry functionImplementationRegistry, OptionManager optionManager) {
 
     // Builds filter for pruning. If filter cannot be built, null should be returned.
-    filterPredicate = getFilterPredicate(filterExpr, udfUtilities, functionImplementationRegistry, optionManager, true);
+    FilterPredicate filterPredicate = getFilterPredicate(filterExpr, udfUtilities, functionImplementationRegistry, optionManager, true);
     if (filterPredicate == null) {
       logger.debug("FilterPredicate cannot be built.");
       return null;

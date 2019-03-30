@@ -79,7 +79,8 @@ public class TestPushDownAndPruningWithItemStar extends PlanTestBase {
   public void testPushProjectIntoScanWithExpressionInFilter() throws Exception {
     String query = String.format("select o_orderdate from (select * from `%s`.`%s`) where o_custkey + o_orderkey < 5", DFS_TMP_SCHEMA, TABLE_NAME);
 
-    String[] expectedPlan = {"numFiles=3, numRowGroups=3, usedMetadataFile=false, columns=\\[`o_orderdate`, `o_custkey`, `o_orderkey`\\]"};
+    String[] expectedPlan = {"numFiles=3, numRowGroups=3, usedMetadataFile=false, filter=less_than\\(add\\(`o_custkey`, `o_orderkey`\\) , 5\\) , columns=\\[`o_orderdate`, " +
+      "`o_custkey`, `o_orderkey`\\]"};
     String[] excludedPlan = {};
 
     PlanTestBase.testPlanMatchingPatterns(query, expectedPlan, excludedPlan);

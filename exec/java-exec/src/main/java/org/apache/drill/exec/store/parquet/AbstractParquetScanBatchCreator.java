@@ -465,18 +465,18 @@ public abstract class AbstractParquetScanBatchCreator {
             }
 
             // Get the table metadata (V3)
-            Metadata_V3.ParquetTableMetadata_v3 tableMetadata = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
+            Metadata_V3.ParquetTableMetadata_v3 tableMetadataV3 = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
 
             // The file status for this file
             FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
 
             // The file metadata (V3 - for all columns)
-            // Metadata_V3.ParquetFileMetadata_v3 mdfv3 = getParquetFileMetadata_v3(tableMetadata, fileStatus, fs, true, null, readerConfig);
+            Metadata_V3.ParquetFileMetadata_v3 mdfv3 = getParquetFileMetadata_v3(tableMetadataV3, fileStatus, fs, true, null, readerConfig);
 
-            // MetadataBase.ParquetTableMetadataBase tableMetadata = mdv3.clone();
+            MetadataBase.ParquetTableMetadataBase tableMetadata = tableMetadataV3.clone();
 
-            // MetadataBase.RowGroupMetadata rowGroupMetadata = mdfv3.getRowGroups().get(rowGroup.getRowGroupIndex());
-            MetadataBase.RowGroupMetadata rowGroupMetadata = getRowGroupMetadata(tableMetadata,fileStatus, rowGroupIndex, fs, readerConfig);
+            MetadataBase.RowGroupMetadata rowGroupMetadata = mdfv3.getRowGroups().get(rowGroup.getRowGroupIndex());
+            // MetadataBase.RowGroupMetadata rowGroupMetadata = getRowGroupMetadata(tableMetadata,fileStatus, rowGroupIndex, fs, readerConfig);
 
             Map<SchemaPath, ColumnStatistics> columnsStatistics = ParquetTableMetadataUtils.getRowGroupColumnStatistics(tableMetadata, rowGroupMetadata);
 
