@@ -22,6 +22,7 @@ import org.apache.drill.common.expression.ErrorCollectorImpl;
 import org.apache.drill.common.expression.ExpressionStringBuilder;
 import org.apache.drill.common.expression.LogicalExpression;
 import org.apache.drill.common.expression.SchemaPath;
+import org.apache.drill.common.expression.ValueExpressions;
 import org.apache.drill.common.types.TypeProtos;
 import org.apache.drill.common.types.Types;
 import org.apache.drill.exec.compile.sig.ConstantExpressionIdentifier;
@@ -79,6 +80,7 @@ import org.apache.parquet.schema.Type;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -171,7 +173,7 @@ public abstract class AbstractParquetScanBatchCreator {
   /**
    * Get the metadata for a single file
    */
-  public Metadata_V3.ParquetFileMetadata_v3 getParquetFileMetadata_v3(Metadata_V3.ParquetTableMetadata_v3 parquetTableMetadata,
+  private Metadata_V3.ParquetFileMetadata_v3 getParquetFileMetadata_v3(Metadata_V3.ParquetTableMetadata_v3 parquetTableMetadata,
                                                                       final FileStatus file, final FileSystem fs, boolean allColumns, Set<String> columnSet, ParquetReaderConfig readerConfig) throws IOException,
     InterruptedException {
     final ParquetMetadata metadata;
@@ -262,6 +264,88 @@ public abstract class AbstractParquetScanBatchCreator {
     return new Metadata_V3.ParquetFileMetadata_v3(path, file.getLen(), rowGroupMetadataList);
   }
 
+  private Metadata_V3.RowGroupMetadata_v3 getRowGroupMetadata(Metadata_V3.ParquetTableMetadata_v3 parquetTableMetadata,
+                                                              final FileStatus file,
+                                                              final int rowGroupIndex,
+                                                              final FileSystem fs,
+                                                              ParquetReaderConfig readerConfig) throws IOException, InterruptedException {
+    final ParquetMetadata metadata;
+    final UserGroupInformation processUserUgi = ImpersonationUtil.getProcessUserUGI();
+    final Configuration conf = new Configuration(fs.getConf());
+    try {
+      metadata = processUserUgi.doAs((PrivilegedExceptionAction<ParquetMetadata>)() -> {
+        try (ParquetFileReader parquetFileReader = ParquetFileReader.open(HadoopInputFile.fromStatus(file, conf), readerConfig.toReadOptions())) {
+          return parquetFileReader.getFooter();
+        }
+      });
+    } catch(Exception e) {
+      logger.error("Exception while reading footer of parquet file [Details - path: {}, owner: {}] as process user {}",
+        file.getPath(), file.getOwner(), processUserUgi.getShortUserName(), e);
+      throw e;
+    }
+
+    MessageType schema = metadata.getFileMetaData().getSchema();
+
+    Map<SchemaPath, ColTypeInfo> colTypeInfoMap = new HashMap<>();
+    for (String[] path : schema.getPaths()) {
+      colTypeInfoMap.put(SchemaPath.getCompoundPath(path), getColTypeInfo(schema, schema, path, 0));
+    }
+
+    ArrayList<SchemaPath> ALL_COLS = new ArrayList<>();
+    ALL_COLS.add(SchemaPath.STAR_COLUMN);
+    ParquetReaderUtility.DateCorruptionStatus containsCorruptDates = ParquetReaderUtility.detectCorruptDates(metadata, ALL_COLS,
+      readerConfig.autoCorrectCorruptedDates());
+    logger.debug("Contains corrupt dates: {}.", containsCorruptDates);
+
+    BlockMetaData rowGroup = metadata.getBlocks().get(rowGroupIndex);
+
+    List<Metadata_V3.ColumnMetadata_v3> columnMetadataList = new ArrayList<>();
+    long length = 0;
+    for (ColumnChunkMetaData col : rowGroup.getColumns()) {
+      String[] columnName = col.getPath().toArray();
+      SchemaPath columnSchemaName = SchemaPath.getCompoundPath(columnName);
+      ColTypeInfo colTypeInfo = colTypeInfoMap.get(columnSchemaName);
+
+      Metadata_V3.ColumnTypeMetadata_v3 columnTypeMetadata =
+        new Metadata_V3.ColumnTypeMetadata_v3(columnName, col.getPrimitiveType().getPrimitiveTypeName(), colTypeInfo.originalType,
+          colTypeInfo.precision, colTypeInfo.scale, colTypeInfo.repetitionLevel, colTypeInfo.definitionLevel);
+
+      if (parquetTableMetadata.columnTypeInfo == null) {
+        parquetTableMetadata.columnTypeInfo = new ConcurrentHashMap<>();
+      }
+      parquetTableMetadata.columnTypeInfo.put(new Metadata_V3.ColumnTypeMetadata_v3.Key(columnTypeMetadata.name), columnTypeMetadata);
+      Statistics<?> stats = col.getStatistics();
+      // Save the column schema info. We'll merge it into one list
+      Object minValue = null;
+      Object maxValue = null;
+      long numNulls = -1;
+      boolean statsAvailable = stats != null && !stats.isEmpty();
+      if (statsAvailable) {
+        if (stats.hasNonNullValue()) {
+          minValue = stats.genericGetMin();
+          maxValue = stats.genericGetMax();
+          if (containsCorruptDates == ParquetReaderUtility.DateCorruptionStatus.META_SHOWS_CORRUPTION && columnTypeMetadata.originalType == OriginalType.DATE) {
+            minValue = ParquetReaderUtility.autoCorrectCorruptedDate((Integer) minValue);
+            maxValue = ParquetReaderUtility.autoCorrectCorruptedDate((Integer) maxValue);
+          }
+        }
+        numNulls = stats.getNumNulls();
+      }
+      Metadata_V3.ColumnMetadata_v3 columnMetadata = new Metadata_V3.ColumnMetadata_v3(columnTypeMetadata.name, col.getPrimitiveType().getPrimitiveTypeName(), minValue, maxValue, numNulls);
+      columnMetadataList.add(columnMetadata);
+
+      length += col.getTotalSize();
+    }
+
+    // DRILL-5009: Skip the RowGroup if it is empty
+    // Note we still read the schema even if there are no values in the RowGroup
+    //if (rowGroup.getRowCount() == 0) {
+    //  return null;
+    //}
+
+    return new Metadata_V3.RowGroupMetadata_v3(rowGroup.getStartingPos(), length, rowGroup.getRowCount(),
+      getHostAffinity(file, fs, rowGroup.getStartingPos(), length), columnMetadataList);
+  }
 
   /**
    * Returns parquet filter predicate built from specified {@code filterExpr}.
@@ -279,7 +363,6 @@ public abstract class AbstractParquetScanBatchCreator {
                                             FunctionImplementationRegistry functionImplementationRegistry,
                                             OptionManager optionManager,
                                             boolean omitUnsupportedExprs) {
-    //return getRowGroupsMetadata().values().iterator().next().getSchema();
 
     TupleMetadata types = parquetGroupScan.getColumnMetadata();
     if (types == null) {
@@ -367,62 +450,70 @@ public abstract class AbstractParquetScanBatchCreator {
           }
           ParquetMetadata footer = footers.get(rowGroup.getPath());
 
+          LogicalExpression filterExpr = rowGroupScan.getFilter();
+          int rowGroupIndex = rowGroup.getRowGroupIndex();
+          long footerRowCount = footer.getBlocks().get(rowGroupIndex).getRowCount();
+
           //
-          //   If a filter is given - use it to perform run-time pruning
+          //   If a filter is given (and it is not just "TRUE") - then use it to perform run-time pruning
           //
-          if ( rowGroupScan.getFilter() != null ) {
+          if ( filterExpr != null && ! (filterExpr instanceof ValueExpressions.BooleanExpression)  ) { // skip when no filter or filter is TRUE
+
+            if ( timer != null ) {  // restart the timer, if tracing
+              timer.reset();
+              timer.start();
+            }
 
             // Get the table metadata (V3)
-            Metadata_V3.ParquetTableMetadata_v3 mdv3 = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
+            Metadata_V3.ParquetTableMetadata_v3 tableMetadata = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
 
-            // The file status for this file (must use "recursive", even for a specific file, else the code would assert)
+            // The file status for this file
             FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
 
             // The file metadata (V3 - for all columns)
-            Metadata_V3.ParquetFileMetadata_v3 mdfv3 = getParquetFileMetadata_v3(mdv3, fileStatus, fs, true, null, readerConfig);
+            // Metadata_V3.ParquetFileMetadata_v3 mdfv3 = getParquetFileMetadata_v3(tableMetadata, fileStatus, fs, true, null, readerConfig);
 
+            // MetadataBase.ParquetTableMetadataBase tableMetadata = mdv3.clone();
 
-            MetadataBase.ParquetTableMetadataBase tableMetadata = mdv3.clone();
-
-            MetadataBase.RowGroupMetadata rowGroupMetadata = mdfv3.getRowGroups().get(rowGroup.getRowGroupIndex());
+            // MetadataBase.RowGroupMetadata rowGroupMetadata = mdfv3.getRowGroups().get(rowGroup.getRowGroupIndex());
+            MetadataBase.RowGroupMetadata rowGroupMetadata = getRowGroupMetadata(tableMetadata,fileStatus, rowGroupIndex, fs, readerConfig);
 
             Map<SchemaPath, ColumnStatistics> columnsStatistics = ParquetTableMetadataUtils.getRowGroupColumnStatistics(tableMetadata, rowGroupMetadata);
 
             List<SchemaPath> columns = columnsStatistics.keySet().stream().collect(Collectors.toList());
 
-            List<FileStatus> lfs = new ArrayList<>();
-            lfs.add(fileStatus);
-            List<Path> lp = new ArrayList<>();
-            lp.add(rowGroup.getPath());
+            List<FileStatus> listFileStatus = new ArrayList<>(Arrays.asList(fileStatus));
+            List<Path> listRowGroupPath = new ArrayList<>(Arrays.asList(rowGroup.getPath()));
+            List<ReadEntryWithPath> entries = new ArrayList<>(Arrays.asList(new ReadEntryWithPath(rowGroup.getPath())));
 
             Path selectionRoot = rowGroupScan.getSelectionRoot();
 
-            FileSelection fileSelection = new FileSelection(lfs /*List<FileStatus> statuses */, lp /*List<Path> file*/, selectionRoot);
+            FileSelection fileSelection = new FileSelection(listFileStatus, listRowGroupPath, selectionRoot);
 
             Path cacheFileRoot = fileSelection.cacheFileRoot;
 
-            List<ReadEntryWithPath> entries = new ArrayList<>();
-            ReadEntryWithPath rewp = new ReadEntryWithPath(rowGroup.getPath());
-            entries.add(rewp);
-
             ParquetTableMetadataProviderImpl metadataProvider = new ParquetTableMetadataProviderImpl(entries, selectionRoot, cacheFileRoot, readerConfig, fs, false);
 
-            ParquetGroupScan pgs = new ParquetGroupScan("", metadataProvider, fileSelection, columns, readerConfig, rowGroupScan.getFilter());
+            ParquetGroupScan pgs = new ParquetGroupScan( context.getQueryUserName(), metadataProvider, fileSelection, columns, readerConfig, filterExpr);
 
-            FilterPredicate filterPredicate = getFilterPredicate(pgs, rowGroupScan.getFilter() /*filterExpr*/, context /*udfUtilities*/, (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true);
+            FilterPredicate filterPredicate = getFilterPredicate(pgs, filterExpr, context /*udfUtilities*/, (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true);
 
             //
             // Perform the Run-Time Pruning - i.e. Skip this rowgroup if the match fails
             //
-            RowsMatch match = FilterEvaluatorUtils.matches(filterPredicate, columnsStatistics, footer.getBlocks().get(rowGroup.getRowGroupIndex()).getRowCount());
+            RowsMatch match = FilterEvaluatorUtils.matches(filterPredicate, columnsStatistics, footerRowCount);
+            if (timer != null) { // if tracing
+              long timeToRead = timer.elapsed(TimeUnit.MICROSECONDS);
+              logger.trace("Run-time pruning: {} row-group {} (RG index: {} row count: {}), took {} usec", match == RowsMatch.NONE ? "Excluded" : "Included", rowGroup.getPath(),
+                rowGroupIndex, footerRowCount, timeToRead);
+            }
             if (match == RowsMatch.NONE) {
-              logger.warn("Prunning out rowGroup {}", rowGroup.getPath());
-              rowgroupsPruned++; // one more was pruned
-              if (firstRowGroup == null) {  // keep first, in case all row groups are pruned
+              rowgroupsPruned++; // one more RG was pruned
+              if (firstRowGroup == null) {  // keep first RG, in case all row groups are pruned
                 firstRowGroup = rowGroup;
                 firstFooter = footer;
               }
-              continue; // This Row group does not comply with the filter - prune it out and check the next one
+              continue; // This Row group does not comply with the filter - prune it out and check the next Row Group
             }
           }
 
@@ -432,6 +523,7 @@ public abstract class AbstractParquetScanBatchCreator {
 
       // in case all row groups were pruned out - create a single reader for the first one (so that the schema could be returned)
       if ( readers.size() == 0 && firstRowGroup != null ) {
+        logger.trace("All row groups were pruned out. Returning the first: {} (row count {}) for its schema", firstRowGroup.getPath(), firstRowGroup.getNumRecordsToRead());
         DrillFileSystem fs = fsManager.get(rowGroupScan.getFsConf(firstRowGroup), firstRowGroup.getPath());
         mapWithMaxColumns = createReaderAndImplicitColumns(context, rowGroupScan, oContext, columnExplorer, readers, implicitColumns, mapWithMaxColumns, firstRowGroup, fs,
           firstFooter, true);

@@ -204,8 +204,6 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
     final Set<SchemaPath> schemaPathsInExpr =
         filterExpr.accept(new FilterEvaluatorUtils.FieldReferenceFinder(), null);
 
-    setFilter(filterExpr);
-
     GroupScanWithMetadataFilterer filteredMetadata = getFilterer().getFiltered(optionManager, filterPredicate, schemaPathsInExpr);
 
     if (!getFilesMetadata().isEmpty()) {
