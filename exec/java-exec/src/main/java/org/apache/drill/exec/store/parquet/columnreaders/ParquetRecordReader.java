@@ -248,9 +248,9 @@ public class ParquetRecordReader extends AbstractRecordReader {
 
     try {
       schema.buildSchema();
-      if ( numRecordsToRead > 0 ) { // when reading schema only, skip setting the batch sizer (its code asserts on zero)
+      // if ( numRecordsToRead > 0 ) { // when reading schema only, skip setting the batch sizer (its code asserts on zero)
         batchSizerMgr.setup();
-      }
+      // }
       readState = new ReadState(schema, batchSizerMgr, parquetReaderStats, numRecordsToRead, useAsyncColReader);
       readState.buildReader(this, output);
     } catch (Exception e) {
