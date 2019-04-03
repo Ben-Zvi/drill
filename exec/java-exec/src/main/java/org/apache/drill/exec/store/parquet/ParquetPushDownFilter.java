@@ -193,7 +193,9 @@ public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
         // If current row group fully matches filter,
         // but row group pruning did not happen, remove the filter.
         if (nonConvertedPredList.isEmpty()) {
-          groupScan.setFilter(null); // disable the original filter expr (i.e. don't use it at run-time)
+          if ( ! skipRuntimePruning ) {
+            groupScan.setFilter(null); // disable the original filter expr (i.e. don't use it at run-time)
+          }
           call.transformTo(child);
         } else if (nonConvertedPredList.size() == predList.size()) {
           // None of the predicates participated in filter pushdown.
@@ -239,7 +241,7 @@ public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
           new DrillParseContext(PrelUtil.getPlannerSettings(call.getPlanner())), scan, theFilterRel.getCondition());
 
         if ( ! skipRuntimePruning ) {
-          groupScan.setFilter(filterPredicate); // pass the new filter expr to (potentialy) be used at run-time
+          newGroupScan.setFilter(filterPredicate); // pass the new filter expr to (potentialy) be used at run-time
         }
 
         newNode = theFilterRel; // replace the new node with the new filter on top of that new node

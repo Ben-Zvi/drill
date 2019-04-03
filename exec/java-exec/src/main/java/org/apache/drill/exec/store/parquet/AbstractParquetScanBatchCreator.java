@@ -223,8 +223,7 @@ public abstract class AbstractParquetScanBatchCreator {
           parquetTableMetadata.columnTypeInfo = new ConcurrentHashMap<>();
         }
         parquetTableMetadata.columnTypeInfo.put(new Metadata_V3.ColumnTypeMetadata_v3.Key(columnTypeMetadata.name), columnTypeMetadata);
-        // Store column metadata only if allColumns is set to true or if the column belongs to the subset of columns specified in the refresh command
-        if (allColumns || columnSet == null || !allColumns && columnSet != null && columnSet.size() > 0 && columnSet.contains(columnSchemaName.getRootSegmentPath())) {
+        // Store column metadata for all columns
           Statistics<?> stats = col.getStatistics();
           // Save the column schema info. We'll merge it into one list
           Object minValue = null;
@@ -244,7 +243,7 @@ public abstract class AbstractParquetScanBatchCreator {
           }
           Metadata_V3.ColumnMetadata_v3 columnMetadata = new Metadata_V3.ColumnMetadata_v3(columnTypeMetadata.name, col.getPrimitiveType().getPrimitiveTypeName(), minValue, maxValue, numNulls);
           columnMetadataList.add(columnMetadata);
-        }
+
         length += col.getTotalSize();
       }
 
@@ -425,6 +424,16 @@ public abstract class AbstractParquetScanBatchCreator {
 
     try {
 
+      LogicalExpression filterExpr = rowGroupScan.getFilter();
+      Path selectionRoot = rowGroupScan.getSelectionRoot();
+      // Runtime pruning: To avoid recomputing metadata objects for each row-group in case they use the same file
+      // keep the following objects computed earlier
+      Path prevRowGroupPath = null;
+      Metadata_V3.ParquetTableMetadata_v3 tableMetadataV3 = null;
+      Metadata_V3.ParquetFileMetadata_v3 mdfv3 = null;
+      FileSelection fileSelection = null;
+      ParquetTableMetadataProviderImpl metadataProvider = null;
+
       for (RowGroupReadEntry rowGroup : rowGroupScan.getRowGroupReadEntries()) {
         /*
         Here we could store a map from file names to footers, to prevent re-reading the footer for each row group in a file
@@ -450,7 +459,6 @@ public abstract class AbstractParquetScanBatchCreator {
           }
           ParquetMetadata footer = footers.get(rowGroup.getPath());
 
-          LogicalExpression filterExpr = rowGroupScan.getFilter();
           int rowGroupIndex = rowGroup.getRowGroupIndex();
           long footerRowCount = footer.getBlocks().get(rowGroupIndex).getRowCount();
 
@@ -464,39 +472,37 @@ public abstract class AbstractParquetScanBatchCreator {
               timer.start();
             }
 
-            // Get the table metadata (V3)
-            Metadata_V3.ParquetTableMetadata_v3 tableMetadataV3 = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
+            // Initialize path specific metadata etc, when a new file, or at the first time
+            if ( ! rowGroup.getPath().equals(prevRowGroupPath) ) {
+              // Get the table metadata (V3)
+              tableMetadataV3 = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
 
-            // The file status for this file
-            FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
+              // The file status for this file
+              FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
+              List<FileStatus> listFileStatus = new ArrayList<>(Arrays.asList(fileStatus));
+              List<Path> listRowGroupPath = new ArrayList<>(Arrays.asList(rowGroup.getPath()));
+              List<ReadEntryWithPath> entries = new ArrayList<>(Arrays.asList(new ReadEntryWithPath(rowGroup.getPath())));
+              fileSelection = new FileSelection(listFileStatus, listRowGroupPath, selectionRoot);
 
-            // The file metadata (V3 - for all columns)
-            // ***** Metadata_V3.ParquetFileMetadata_v3 mdfv3 = getParquetFileMetadata_v3(tableMetadataV3, fileStatus, fs, true, null, readerConfig);
+              metadataProvider = new ParquetTableMetadataProviderImpl(entries, selectionRoot, fileSelection.cacheFileRoot, readerConfig, fs,false);
+              // The file metadata (V3 - for all columns)
+              mdfv3 = getParquetFileMetadata_v3(tableMetadataV3, fileStatus, fs, true, null, readerConfig);
+
+              prevRowGroupPath = rowGroup.getPath(); // for next time
+            }
 
             // MetadataBase.ParquetTableMetadataBase tableMetadata = tableMetadataV3.clone();
 
-            //  ***** MetadataBase.RowGroupMetadata rowGroupMetadata = mdfv3.getRowGroups().get(rowGroup.getRowGroupIndex());
-            MetadataBase.RowGroupMetadata rowGroupMetadata = getRowGroupMetadata(tableMetadataV3,fileStatus, rowGroupIndex, fs, readerConfig);
+            MetadataBase.RowGroupMetadata rowGroupMetadata = mdfv3.getRowGroups().get(rowGroup.getRowGroupIndex());
+            // ***** MetadataBase.RowGroupMetadata rowGroupMetadata = getRowGroupMetadata(tableMetadataV3,fileStatus, rowGroupIndex, fs, readerConfig);
 
             Map<SchemaPath, ColumnStatistics> columnsStatistics = ParquetTableMetadataUtils.getRowGroupColumnStatistics(tableMetadataV3, rowGroupMetadata);
 
             List<SchemaPath> columns = columnsStatistics.keySet().stream().collect(Collectors.toList());
 
-            List<FileStatus> listFileStatus = new ArrayList<>(Arrays.asList(fileStatus));
-            List<Path> listRowGroupPath = new ArrayList<>(Arrays.asList(rowGroup.getPath()));
-            List<ReadEntryWithPath> entries = new ArrayList<>(Arrays.asList(new ReadEntryWithPath(rowGroup.getPath())));
-
-            Path selectionRoot = rowGroupScan.getSelectionRoot();
-
-            FileSelection fileSelection = new FileSelection(listFileStatus, listRowGroupPath, selectionRoot);
-
-            Path cacheFileRoot = fileSelection.cacheFileRoot;
-
-            ParquetTableMetadataProviderImpl metadataProvider = new ParquetTableMetadataProviderImpl(entries, selectionRoot, cacheFileRoot, readerConfig, fs, false);
-
             ParquetGroupScan pgs = new ParquetGroupScan( context.getQueryUserName(), metadataProvider, fileSelection, columns, readerConfig, filterExpr);
 
-            FilterPredicate filterPredicate = getFilterPredicate(pgs, filterExpr, context /*udfUtilities*/, (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true);
+            FilterPredicate filterPredicate = getFilterPredicate(pgs, filterExpr, context, (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true);
 
             //
             // Perform the Run-Time Pruning - i.e. Skip this rowgroup if the match fails
