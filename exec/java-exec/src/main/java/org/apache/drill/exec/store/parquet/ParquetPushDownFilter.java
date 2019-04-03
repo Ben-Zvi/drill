@@ -47,8 +47,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import static org.apache.drill.exec.ExecConstants.SKIP_RUNTIME_ROWGROUP_PRUNING_KEY;
-
 public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
 
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ParquetPushDownFilter.class);
@@ -174,8 +172,7 @@ public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
         new DrillParseContext(PrelUtil.getPlannerSettings(call.getPlanner())), scan, qualifiedPred);
 
     // Default - pass the original filter expr to (potentialy) be used at run-time
-    boolean skipRuntimePruning = optimizerContext.getPlannerSettings().getOptions().getBoolean(SKIP_RUNTIME_ROWGROUP_PRUNING_KEY);
-    groupScan.setFilter(skipRuntimePruning ? null : conditionExp); // later may remove or set to another filter (see below)
+    groupScan.setFilterIfOption(conditionExp, optimizerContext); // later may remove or set to another filter (see below)
 
     Stopwatch timer = logger.isDebugEnabled() ? Stopwatch.createStarted() : null;
     AbstractGroupScanWithMetadata newGroupScan = groupScan.applyFilter(conditionExp, optimizerContext,
@@ -193,9 +190,7 @@ public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
         // If current row group fully matches filter,
         // but row group pruning did not happen, remove the filter.
         if (nonConvertedPredList.isEmpty()) {
-          if ( ! skipRuntimePruning ) {
-            groupScan.setFilter(null); // disable the original filter expr (i.e. don't use it at run-time)
-          }
+          groupScan.setFilterIfOption(null, optimizerContext); // disable the original filter expr (i.e. don't use it at run-time)
           call.transformTo(child);
         } else if (nonConvertedPredList.size() == predList.size()) {
           // None of the predicates participated in filter pushdown.
@@ -212,9 +207,7 @@ public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
           LogicalExpression filterPredicate = DrillOptiq.toDrill(
             new DrillParseContext(PrelUtil.getPlannerSettings(call.getPlanner())), scan, theNewFilter.getCondition());
 
-          if ( ! skipRuntimePruning ) {
-            groupScan.setFilter(filterPredicate); // pass the new filter expr to (potentialy) be used at run-time
-          }
+          groupScan.setFilterIfOption(filterPredicate, optimizerContext); // pass the new filter expr to (potentialy) be used at run-time
 
           call.transformTo(theNewFilter); // Replace the child with the new filter on top of the child/scan
         }
@@ -240,9 +233,7 @@ public abstract class ParquetPushDownFilter extends StoragePluginOptimizerRule {
         LogicalExpression filterPredicate = DrillOptiq.toDrill(
           new DrillParseContext(PrelUtil.getPlannerSettings(call.getPlanner())), scan, theFilterRel.getCondition());
 
-        if ( ! skipRuntimePruning ) {
-          newGroupScan.setFilter(filterPredicate); // pass the new filter expr to (potentialy) be used at run-time
-        }
+        newGroupScan.setFilterIfOption(filterPredicate, optimizerContext); // pass the new filter expr to (potentialy) be used at run-time
 
         newNode = theFilterRel; // replace the new node with the new filter on top of that new node
       }
