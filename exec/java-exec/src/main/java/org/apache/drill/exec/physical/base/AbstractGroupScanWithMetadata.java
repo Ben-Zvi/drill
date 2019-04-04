@@ -188,9 +188,13 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
     this.filter = filter;
   }
 
-  public void setFilterIfOption(LogicalExpression filterExpr, OptimizerRulesContext optimizerContext) {
+  /**
+   *  Set the filter (which later may be used at runtime for rowgroup prunning)
+   *  That can be disabled with a planner option.
+   */
+  public void setFilterForRuntime(LogicalExpression filterExpr, OptimizerRulesContext optimizerContext) {
     boolean skipRuntimePruning = optimizerContext.getPlannerSettings().getOptions().getBoolean(SKIP_RUNTIME_ROWGROUP_PRUNING_KEY);
-    if ( skipRuntimePruning ) { setFilter(filterExpr); }
+    if ( ! skipRuntimePruning ) { setFilter(filterExpr); }
   }
 
   @Override

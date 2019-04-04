@@ -20,17 +20,26 @@ package org.apache.drill.exec.store.parquet;
 import org.apache.commons.io.FileUtils;
 import org.apache.drill.PlanTestBase;
 import org.apache.drill.common.expression.LogicalExpression;
+import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.expr.fn.FunctionGenerationHelper;
 import org.apache.drill.exec.expr.stat.RowsMatch;
 import org.apache.drill.exec.ops.FragmentContextImpl;
 import org.apache.drill.exec.planner.physical.PlannerSettings;
 import org.apache.drill.exec.proto.BitControl;
+import org.apache.drill.exec.proto.UserBitShared;
+import org.apache.drill.exec.store.parquet.columnreaders.ParquetRecordReader;
 import org.apache.drill.exec.store.parquet.metadata.Metadata;
 import org.apache.drill.exec.store.parquet.metadata.MetadataBase;
 import org.apache.drill.metastore.ColumnStatistics;
 import org.apache.drill.metastore.ColumnStatisticsKind;
 import org.apache.drill.exec.expr.IsPredicate;
 import org.apache.drill.exec.expr.StatisticsProvider;
+import org.apache.drill.test.BaseDirTestWatcher;
+import org.apache.drill.test.ClientFixture;
+import org.apache.drill.test.ClusterFixture;
+import org.apache.drill.test.ClusterFixtureBuilder;
+import org.apache.drill.test.ProfileParser;
+import org.apache.drill.test.QueryBuilder;
 import org.apache.hadoop.fs.FileSystem;
 import org.junit.Assert;
 import org.junit.AfterClass;
@@ -46,8 +55,10 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.Comparator;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class TestParquetFilterPushDown extends PlanTestBase {
   private static final String CTAS_TABLE = "order_ctas";
@@ -695,4 +706,54 @@ public class TestParquetFilterPushDown extends PlanTestBase {
   private MetadataBase.ParquetTableMetadataBase getParquetMetaData(File file) throws IOException {
     return Metadata.getParquetTableMetadata(fs, file.toURI().getPath(), ParquetReaderConfig.getDefaultInstance());
   }
+
+  // =========  runtime pruning  ==========
+  @Rule
+  public final BaseDirTestWatcher baseDirTestWatcher = new BaseDirTestWatcher();
+
+  /**
+   *
+   * @throws Exception
+   */
+  private void genericTestRuntimePruning(int maxParallel, String sql, long expectedRows, int numPartitions, int numPruned) throws Exception {
+    ClusterFixtureBuilder builder = ClusterFixture.builder(baseDirTestWatcher)
+      .sessionOption(ExecConstants.SKIP_RUNTIME_ROWGROUP_PRUNING_KEY,false)
+      .sessionOption(PlannerSettings.PARQUET_ROWGROUP_FILTER_PUSHDOWN_PLANNING_THRESHOLD_KEY,0)
+      .maxParallelization(maxParallel)
+      .saveProfiles();
+
+    try (ClusterFixture cluster = builder.build();
+         ClientFixture client = cluster.clientFixture()) {
+      runAndCheckResults(client, sql, expectedRows, numPartitions, numPruned);
+    }
+  }
+  /**
+   * Test runtime pruning
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testRuntimePruning() throws Exception {
+    genericTestRuntimePruning( 2, "select a from cp.`parquet/multirowgroupwithNulls.parquet` where s > 4", 20, 4,2 );
+  }
+
+  private void runAndCheckResults(ClientFixture client, String sql, long expectedRows, long numPartitions, long numPruned) throws Exception {
+    QueryBuilder.QuerySummary summary = client.queryBuilder().sql(sql).run();
+
+    if (expectedRows > 0) {
+      assertEquals(expectedRows, summary.recordCount());
+    }
+
+    ProfileParser profile = client.parseProfile(summary.queryIdString());
+    List<ProfileParser.OperatorProfile> ops = profile.getOpsOfType(UserBitShared.CoreOperatorType.PARQUET_ROW_GROUP_SCAN_VALUE);
+
+    assertTrue(!ops.isEmpty());
+    // check for the first op only
+    ProfileParser.OperatorProfile parquestScan0 = ops.get(0);
+    long resultNumRowgroups = parquestScan0.getMetric(ParquetRecordReader.Metric.NUM_ROWGROUPS.ordinal());
+    assertEquals(numPartitions, resultNumRowgroups);
+    long resultNumPruned = parquestScan0.getMetric(ParquetRecordReader.Metric.ROWGROUPS_PRUNED.ordinal());
+    assertEquals(numPruned,resultNumPruned);
+  }
+
 }
