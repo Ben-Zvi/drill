@@ -141,7 +141,7 @@ public abstract class AbstractParquetScanBatchCreator {
             // When starting a new file, or at the first time - Initialize path specific metadata etc
             if ( ! rowGroup.getPath().equals(prevRowGroupPath) ) {
               // Get the table metadata (V3)
-              tableMetadataV3 = Metadata.getParquetTableMetadata(fs, rowGroup.getPath().toString(), readerConfig);
+              tableMetadataV3 = Metadata.getParquetTableMetadata(footer, fs, rowGroup.getPath().toString(), readerConfig);
 
               // The file status for this file
               FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
@@ -152,7 +152,7 @@ public abstract class AbstractParquetScanBatchCreator {
 
               metadataProvider = new ParquetTableMetadataProviderImpl(entries, selectionRoot, fileSelection.cacheFileRoot, readerConfig, fs,false);
               // The file metadata (for all columns)
-              fileMetadataV3 = Metadata.getParquetFileMetadata_v3(tableMetadataV3, fileStatus, fs, true, null, readerConfig);
+              fileMetadataV3 = Metadata.getParquetFileMetadata_v3(tableMetadataV3, footer, fileStatus, fs, true, null, readerConfig);
 
               prevRowGroupPath = rowGroup.getPath(); // for next time
             }
