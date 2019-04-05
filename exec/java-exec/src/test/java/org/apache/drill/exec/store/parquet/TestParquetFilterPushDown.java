@@ -734,7 +734,10 @@ public class TestParquetFilterPushDown extends PlanTestBase {
    */
   @Test
   public void testRuntimePruning() throws Exception {
+    // 's' is the partitioning key (values are: 3,4,5,6 ) -- prune out 2 out of 4 rowgroups
     genericTestRuntimePruning( 2, "select a from cp.`parquet/multirowgroupwithNulls.parquet` where s > 4", 20, 4,2 );
+    // prune out all rowgroups
+    genericTestRuntimePruning( 2, "select a from cp.`parquet/multirowgroupwithNulls.parquet` where s > 8", 0, 4,4 );
   }
 
   private void runAndCheckResults(ClientFixture client, String sql, long expectedRows, long numPartitions, long numPruned) throws Exception {

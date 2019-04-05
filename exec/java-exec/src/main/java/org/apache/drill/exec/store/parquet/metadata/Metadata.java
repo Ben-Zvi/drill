@@ -402,7 +402,7 @@ public class Metadata {
 
     @Override
     protected ParquetFileMetadata_v3 runInner() throws Exception {
-      return getParquetFileMetadata_v3(parquetTableMetadata, fileStatus, fs, allColumns, columnSet);
+      return getParquetFileMetadata_v3(parquetTableMetadata, fileStatus, fs, allColumns, columnSet, readerConfig);
     }
 
     public String toString() {
@@ -410,7 +410,7 @@ public class Metadata {
     }
   }
 
-  private ColTypeInfo getColTypeInfo(MessageType schema, Type type, String[] path, int depth) {
+  private static ColTypeInfo getColTypeInfo(MessageType schema, Type type, String[] path, int depth) {
     if (type.isPrimitive()) {
       PrimitiveType primitiveType = (PrimitiveType) type;
       int precision = 0;
@@ -429,7 +429,7 @@ public class Metadata {
     return getColTypeInfo(schema, t, path, depth + 1);
   }
 
-  private class ColTypeInfo {
+  private static class ColTypeInfo {
     public OriginalType originalType;
     public int precision;
     public int scale;
@@ -448,8 +448,8 @@ public class Metadata {
   /**
    * Get the metadata for a single file
    */
-  private ParquetFileMetadata_v3 getParquetFileMetadata_v3(ParquetTableMetadata_v3 parquetTableMetadata,
-     final FileStatus file, final FileSystem fs, boolean allColumns, Set<String> columnSet) throws IOException, InterruptedException {
+  public static ParquetFileMetadata_v3 getParquetFileMetadata_v3(ParquetTableMetadata_v3 parquetTableMetadata,
+     final FileStatus file, final FileSystem fs, boolean allColumns, Set<String> columnSet, ParquetReaderConfig readerConfig) throws IOException, InterruptedException {
     final ParquetMetadata metadata;
     final UserGroupInformation processUserUgi = ImpersonationUtil.getProcessUserUGI();
     final Configuration conf = new Configuration(fs.getConf());
@@ -546,7 +546,7 @@ public class Metadata {
    * @param length     the length of the row group
    * @return host affinity for the row group
    */
-  private Map<String, Float> getHostAffinity(FileStatus fileStatus, FileSystem fs, long start, long length)
+  private static Map<String, Float> getHostAffinity(FileStatus fileStatus, FileSystem fs, long start, long length)
       throws IOException {
     BlockLocation[] blockLocations = fs.getFileBlockLocations(fileStatus, start, length);
     Map<String, Float> hostAffinityMap = Maps.newHashMap();
