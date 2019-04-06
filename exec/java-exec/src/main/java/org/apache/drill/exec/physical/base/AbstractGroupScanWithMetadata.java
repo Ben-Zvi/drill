@@ -43,6 +43,7 @@ import org.apache.drill.exec.server.options.OptionManager;
 import org.apache.drill.exec.store.ColumnExplorer;
 import org.apache.drill.exec.store.dfs.FileSelection;
 import org.apache.drill.exec.store.parquet.FilterEvaluatorUtils;
+import org.apache.drill.exec.store.parquet.ParquetGroupScan;
 import org.apache.drill.exec.store.parquet.ParquetTableMetadataUtils;
 import org.apache.drill.metastore.BaseMetadata;
 import org.apache.drill.metastore.ColumnStatistics;
@@ -68,6 +69,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static org.apache.drill.exec.ExecConstants.HIVE_OPTIMIZE_SCAN_WITH_NATIVE_READERS;
 import static org.apache.drill.exec.ExecConstants.SKIP_RUNTIME_ROWGROUP_PRUNING_KEY;
 
 /**
@@ -189,11 +191,18 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
   }
 
   /**
-   *  Set the filter (which later may be used at runtime for rowgroup prunning)
-   *  That can be disabled with a planner option.
+   *  Set the filter - thus enabling runtime rowgroup pruning
+   *  The runtime pruning can be disabled with an option.
+   * @param filterExpr The filter to be used at runtime to match with rowgroups' footers
+   * @param optimizerContext The context for the options
    */
   public void setFilterForRuntime(LogicalExpression filterExpr, OptimizerRulesContext optimizerContext) {
-    boolean skipRuntimePruning = optimizerContext.getPlannerSettings().getOptions().getBoolean(SKIP_RUNTIME_ROWGROUP_PRUNING_KEY);
+    OptionManager options = optimizerContext.getPlannerSettings().getOptions();
+    boolean skipRuntimePruning = options.getBoolean(SKIP_RUNTIME_ROWGROUP_PRUNING_KEY) ||  // if option is set to disable runtime pruning
+      // or when this is a HiveDrillNativeParquetScan
+      // (Currently runtime pruning does not work correctly in HIVE_DRILL_NATIVE_PARQUET_ROW_GROUP_SCAN)
+      ( ! (this instanceof ParquetGroupScan) && options.getBoolean(HIVE_OPTIMIZE_SCAN_WITH_NATIVE_READERS) );
+
     if ( ! skipRuntimePruning ) { setFilter(filterExpr); }
   }
 
