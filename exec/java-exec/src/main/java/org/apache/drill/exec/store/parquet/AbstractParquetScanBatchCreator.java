@@ -268,7 +268,7 @@ public abstract class AbstractParquetScanBatchCreator {
       reader = new ParquetRecordReader(context,
           rowGroup.getPath(),
           rowGroup.getRowGroupIndex(),
-          readSchemaOnly ? 1 : rowGroup.getNumRecordsToRead(), // read 1 row when only the schema is needed
+          rowGroup.getNumRecordsToRead(), // if readSchemaOnly - then set to zero rows to read (currently breaks the ScanBatch)
           fs,
           CodecFactory.createDirectCodecFactory(fs.getConf(), new ParquetDirectByteBufferAllocator(oContext.getAllocator()), 0),
           footer,
