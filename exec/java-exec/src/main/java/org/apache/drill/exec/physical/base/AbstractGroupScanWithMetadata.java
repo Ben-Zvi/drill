@@ -211,7 +211,8 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
       FunctionImplementationRegistry functionImplementationRegistry, OptionManager optionManager) {
 
     // Builds filter for pruning. If filter cannot be built, null should be returned.
-    FilterPredicate filterPredicate = getFilterPredicate(filterExpr, udfUtilities, functionImplementationRegistry, optionManager, true);
+    FilterPredicate filterPredicate =
+            getFilterPredicate(filterExpr, udfUtilities, functionImplementationRegistry, optionManager, true);
     if (filterPredicate == null) {
       logger.debug("FilterPredicate cannot be built.");
       return null;
@@ -286,6 +287,14 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
    */
   protected abstract GroupScanWithMetadataFilterer getFilterer();
 
+  public FilterPredicate getFilterPredicate(LogicalExpression filterExpr,
+                                                   UdfUtilities udfUtilities,
+                                                   FunctionImplementationRegistry functionImplementationRegistry,
+                                                   OptionManager optionManager,
+                                                   boolean omitUnsupportedExprs) {
+    return getFilterPredicate(filterExpr, udfUtilities, functionImplementationRegistry, optionManager,
+            omitUnsupportedExprs, supportsFileImplicitColumns(), getTableMetadata());
+  }
   /**
    * Returns parquet filter predicate built from specified {@code filterExpr}.
    *
@@ -296,12 +305,14 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
    *                                       may be omitted from the resulting expression
    * @return parquet filter predicate
    */
-  public FilterPredicate getFilterPredicate(LogicalExpression filterExpr,
+  public static FilterPredicate getFilterPredicate(LogicalExpression filterExpr,
                                             UdfUtilities udfUtilities,
                                             FunctionImplementationRegistry functionImplementationRegistry,
                                             OptionManager optionManager,
-                                            boolean omitUnsupportedExprs) {
-    TupleMetadata types = getColumnMetadata();
+                                            boolean omitUnsupportedExprs,
+                                            boolean supportsFileImplicitColumns,
+                                            TableMetadata tableMetadata) {
+    TupleMetadata types = tableMetadata.getSchema().copy();
     if (types == null) {
       throw new UnsupportedOperationException("At least one schema source should be available.");
     }
@@ -309,7 +320,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
     Set<SchemaPath> schemaPathsInExpr = filterExpr.accept(new FilterEvaluatorUtils.FieldReferenceFinder(), null);
 
     // adds implicit or partition columns if they weren't added before.
-    if (supportsFileImplicitColumns()) {
+    if (supportsFileImplicitColumns) {
       for (SchemaPath schemaPath : schemaPathsInExpr) {
         if (isImplicitOrPartCol(schemaPath, optionManager) && SchemaPathUtils.getColumnMetadata(schemaPath, types) == null) {
           types.add(MaterializedField.create(schemaPath.getRootSegmentPath(), Types.required(TypeProtos.MinorType.VARCHAR)));
@@ -476,7 +487,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
   protected abstract boolean supportsFileImplicitColumns();
   protected abstract List<String> getPartitionValues(LocationProvider locationProvider);
 
-  public boolean isImplicitOrPartCol(SchemaPath schemaPath, OptionManager optionManager) {
+  public static boolean isImplicitOrPartCol(SchemaPath schemaPath, OptionManager optionManager) {
     Set<String> implicitColNames = ColumnExplorer.initImplicitFileColumns(optionManager).keySet();
     return ColumnExplorer.isPartitionColumn(optionManager, schemaPath) || implicitColNames.contains(schemaPath.getRootSegmentPath());
   }

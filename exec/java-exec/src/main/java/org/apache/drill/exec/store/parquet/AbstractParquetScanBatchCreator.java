@@ -23,6 +23,7 @@ import org.apache.drill.common.expression.ValueExpressions;
 import org.apache.drill.exec.expr.FilterPredicate;
 import org.apache.drill.exec.expr.fn.FunctionImplementationRegistry;
 import org.apache.drill.exec.expr.stat.RowsMatch;
+import org.apache.drill.exec.physical.base.*;
 import org.apache.drill.exec.store.dfs.FileSelection;
 import org.apache.drill.exec.store.dfs.ReadEntryWithPath;
 import org.apache.drill.exec.store.parquet.metadata.Metadata;
@@ -163,10 +164,15 @@ public abstract class AbstractParquetScanBatchCreator {
 
             List<SchemaPath> columns = columnsStatistics.keySet().stream().collect(Collectors.toList());
 
-            ParquetGroupScan parquetGroupScan = new ParquetGroupScan( context.getQueryUserName(), metadataProvider, fileSelection, columns, readerConfig, filterExpr);
+            // ParquetGroupScan parquetGroupScan = new ParquetGroupScan( context.getQueryUserName(), metadataProvider, fileSelection, columns, readerConfig, filterExpr);
 
-            FilterPredicate filterPredicate = parquetGroupScan.getFilterPredicate(filterExpr, context, (FunctionImplementationRegistry) context.getFunctionRegistry(),
-              context.getOptions(), true);
+            // FilterPredicate filterPredicate = parquetGroupScan.getFilterPredicate(filterExpr, context, (FunctionImplementationRegistry) context.getFunctionRegistry(),
+            //  context.getOptions(), true);
+
+            FilterPredicate filterPredicate = AbstractGroupScanWithMetadata.getFilterPredicate(filterExpr, context,
+                    (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true,
+                    true /* supports file implicit columns */,
+                    metadataProvider.getTableMetadata());
 
             //
             // Perform the Run-Time Pruning - i.e. Skip this rowgroup if the match fails
