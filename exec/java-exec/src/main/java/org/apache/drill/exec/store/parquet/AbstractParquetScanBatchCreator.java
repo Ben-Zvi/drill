@@ -24,6 +24,7 @@ import org.apache.drill.exec.expr.FilterPredicate;
 import org.apache.drill.exec.expr.fn.FunctionImplementationRegistry;
 import org.apache.drill.exec.expr.stat.RowsMatch;
 import org.apache.drill.exec.physical.base.*;
+import org.apache.drill.exec.record.metadata.*;
 import org.apache.drill.exec.store.dfs.FileSelection;
 import org.apache.drill.exec.store.dfs.ReadEntryWithPath;
 import org.apache.drill.exec.store.parquet.metadata.Metadata;
@@ -88,6 +89,7 @@ public abstract class AbstractParquetScanBatchCreator {
     RowGroupReadEntry firstRowGroup = null; // to be scanned in case ALL row groups are pruned out
     ParquetMetadata firstFooter = null;
     long rowgroupsPruned = 0; // for stats
+    TupleSchema tupleSchema = rowGroupScan.getTupleSchema();
 
     try {
 
@@ -99,7 +101,7 @@ public abstract class AbstractParquetScanBatchCreator {
       Metadata_V3.ParquetTableMetadata_v3 tableMetadataV3 = null;
       Metadata_V3.ParquetFileMetadata_v3 fileMetadataV3 = null;
       FileSelection fileSelection = null;
-      ParquetTableMetadataProviderImpl metadataProvider = null;
+      // ParquetTableMetadataProviderImpl metadataProvider = null;
 
       for (RowGroupReadEntry rowGroup : rowGroupScan.getRowGroupReadEntries()) {
         /*
@@ -146,12 +148,12 @@ public abstract class AbstractParquetScanBatchCreator {
 
               // The file status for this file
               FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
-              List<FileStatus> listFileStatus = new ArrayList<>(Arrays.asList(fileStatus));
-              List<Path> listRowGroupPath = new ArrayList<>(Arrays.asList(rowGroup.getPath()));
-              List<ReadEntryWithPath> entries = new ArrayList<>(Arrays.asList(new ReadEntryWithPath(rowGroup.getPath())));
-              fileSelection = new FileSelection(listFileStatus, listRowGroupPath, selectionRoot);
+              // List<FileStatus> listFileStatus = new ArrayList<>(Arrays.asList(fileStatus));
+              // List<Path> listRowGroupPath = new ArrayList<>(Arrays.asList(rowGroup.getPath()));
+              // List<ReadEntryWithPath> entries = new ArrayList<>(Arrays.asList(new ReadEntryWithPath(rowGroup.getPath())));
+              // fileSelection = new FileSelection(listFileStatus, listRowGroupPath, selectionRoot);
 
-              metadataProvider = new ParquetTableMetadataProviderImpl(entries, selectionRoot, fileSelection.cacheFileRoot, readerConfig, fs,false);
+              // metadataProvider = new ParquetTableMetadataProviderImpl(entries, selectionRoot, fileSelection.cacheFileRoot, readerConfig, fs,false);
               // The file metadata (for all columns)
               fileMetadataV3 = Metadata.getParquetFileMetadata_v3(tableMetadataV3, footer, fileStatus, fs, true, null, readerConfig);
 
@@ -172,7 +174,7 @@ public abstract class AbstractParquetScanBatchCreator {
             FilterPredicate filterPredicate = AbstractGroupScanWithMetadata.getFilterPredicate(filterExpr, context,
                     (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true,
                     true /* supports file implicit columns */,
-                    metadataProvider.getTableMetadata());
+                     tupleSchema);
 
             //
             // Perform the Run-Time Pruning - i.e. Skip this rowgroup if the match fails

@@ -36,9 +36,7 @@ import org.apache.drill.exec.ops.OptimizerRulesContext;
 import org.apache.drill.exec.ops.UdfUtilities;
 import org.apache.drill.exec.planner.physical.PlannerSettings;
 import org.apache.drill.exec.record.MaterializedField;
-import org.apache.drill.exec.record.metadata.ColumnMetadata;
-import org.apache.drill.exec.record.metadata.SchemaPathUtils;
-import org.apache.drill.exec.record.metadata.TupleMetadata;
+import org.apache.drill.exec.record.metadata.*;
 import org.apache.drill.exec.server.options.OptionManager;
 import org.apache.drill.exec.store.ColumnExplorer;
 import org.apache.drill.exec.store.dfs.FileSelection;
@@ -293,7 +291,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
                                                    OptionManager optionManager,
                                                    boolean omitUnsupportedExprs) {
     return getFilterPredicate(filterExpr, udfUtilities, functionImplementationRegistry, optionManager,
-            omitUnsupportedExprs, supportsFileImplicitColumns(), getTableMetadata());
+            omitUnsupportedExprs, supportsFileImplicitColumns(), getTableMetadata().getSchema());
   }
   /**
    * Returns parquet filter predicate built from specified {@code filterExpr}.
@@ -311,8 +309,8 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
                                             OptionManager optionManager,
                                             boolean omitUnsupportedExprs,
                                             boolean supportsFileImplicitColumns,
-                                            TableMetadata tableMetadata) {
-    TupleMetadata types = tableMetadata.getSchema().copy();
+                                            TupleSchema tupleSchema) {
+    TupleMetadata types = tupleSchema.copy();
     if (types == null) {
       throw new UnsupportedOperationException("At least one schema source should be available.");
     }

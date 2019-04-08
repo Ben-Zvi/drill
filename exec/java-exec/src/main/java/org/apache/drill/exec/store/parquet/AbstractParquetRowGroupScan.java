@@ -27,6 +27,7 @@ import org.apache.drill.exec.physical.base.GroupScan;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.physical.base.PhysicalVisitor;
 import org.apache.drill.exec.physical.base.SubScan;
+import org.apache.drill.exec.record.metadata.*;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
@@ -42,19 +43,22 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
   protected final ParquetReaderConfig readerConfig;
   protected final LogicalExpression filter;
   protected final Path selectionRoot;
+  protected final TupleSchema tupleSchema;
 
   protected AbstractParquetRowGroupScan(String userName,
                                      List<RowGroupReadEntry> rowGroupReadEntries,
                                      List<SchemaPath> columns,
                                      ParquetReaderConfig readerConfig,
                                      LogicalExpression filter,
-                                     Path selectionRoot) {
+                                     Path selectionRoot,
+                                     TupleSchema tupleSchema) {
     super(userName);
     this.rowGroupReadEntries = rowGroupReadEntries;
     this.columns = columns == null ? GroupScan.ALL_COLUMNS : columns;
     this.readerConfig = readerConfig == null ? ParquetReaderConfig.getDefaultInstance() : readerConfig;
     this.filter = filter;
     this.selectionRoot = selectionRoot;
+    this.tupleSchema = tupleSchema;
   }
 
   // This ctor is used by HiveDrillNativeParquetRowGroupScan which has no selection root
@@ -63,7 +67,7 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
                                         List<SchemaPath> columns,
                                         ParquetReaderConfig readerConfig,
                                         LogicalExpression filter) {
-    this(userName,rowGroupReadEntries, columns, readerConfig, filter, null);
+    this(userName,rowGroupReadEntries, columns, readerConfig, filter, null, null);
   }
 
   @JsonProperty
@@ -112,6 +116,9 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
   public Path getSelectionRoot() {
     return selectionRoot;
   }
+
+  @JsonProperty
+  public TupleSchema getTupleSchema() { return tupleSchema; }
 
   public abstract AbstractParquetRowGroupScan copy(List<SchemaPath> columns);
   @JsonIgnore

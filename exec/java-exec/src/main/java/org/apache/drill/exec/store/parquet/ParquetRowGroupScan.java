@@ -27,6 +27,7 @@ import org.apache.drill.common.logical.FormatPluginConfig;
 import org.apache.drill.common.logical.StoragePluginConfig;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.proto.UserBitShared.CoreOperatorType;
+import org.apache.drill.exec.record.metadata.*;
 import org.apache.drill.exec.store.ColumnExplorer;
 import org.apache.drill.exec.store.StoragePluginRegistry;
 
@@ -56,14 +57,16 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
                              @JsonProperty("columns") List<SchemaPath> columns,
                              @JsonProperty("readerConfig") ParquetReaderConfig readerConfig,
                              @JsonProperty("selectionRoot") Path selectionRoot,
-                             @JsonProperty("filter") LogicalExpression filter) throws ExecutionSetupException {
+                             @JsonProperty("filter") LogicalExpression filter,
+                             @JsonProperty("tupleSchema") TupleSchema tupleSchema) throws ExecutionSetupException {
     this(userName,
         (ParquetFormatPlugin) registry.getFormatPlugin(Preconditions.checkNotNull(storageConfig), Preconditions.checkNotNull(formatConfig)),
         rowGroupReadEntries,
         columns,
         readerConfig,
         selectionRoot,
-        filter);
+        filter,
+        tupleSchema);
   }
 
   public ParquetRowGroupScan(String userName,
@@ -72,8 +75,9 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
                              List<SchemaPath> columns,
                              ParquetReaderConfig readerConfig,
                              Path selectionRoot,
-                             LogicalExpression filter) {
-    super(userName, rowGroupReadEntries, columns, readerConfig, filter, selectionRoot);
+                             LogicalExpression filter,
+                             TupleSchema tupleSchema) {
+    super(userName, rowGroupReadEntries, columns, readerConfig, filter, selectionRoot, tupleSchema);
     this.formatPlugin = Preconditions.checkNotNull(formatPlugin, "Could not find format config for the given configuration");
     this.formatConfig = formatPlugin.getConfig();
   }
@@ -96,7 +100,7 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
   @Override
   public PhysicalOperator getNewWithChildren(List<PhysicalOperator> children) {
     Preconditions.checkArgument(children.isEmpty());
-    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, getSelectionRoot(), filter);
+    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, getSelectionRoot(), filter, tupleSchema);
   }
 
   @Override
@@ -106,7 +110,7 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
 
   @Override
   public AbstractParquetRowGroupScan copy(List<SchemaPath> columns) {
-    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, getSelectionRoot(), filter);
+    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, getSelectionRoot(), filter, tupleSchema);
   }
 
   @Override
