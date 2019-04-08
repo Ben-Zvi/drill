@@ -27,7 +27,7 @@ import org.apache.drill.exec.physical.base.GroupScan;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.physical.base.PhysicalVisitor;
 import org.apache.drill.exec.physical.base.SubScan;
-import org.apache.drill.exec.record.metadata.*;
+import org.apache.drill.exec.record.metadata.TupleSchema;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 

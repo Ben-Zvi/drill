@@ -23,10 +23,9 @@ import org.apache.drill.common.expression.ValueExpressions;
 import org.apache.drill.exec.expr.FilterPredicate;
 import org.apache.drill.exec.expr.fn.FunctionImplementationRegistry;
 import org.apache.drill.exec.expr.stat.RowsMatch;
-import org.apache.drill.exec.physical.base.*;
-import org.apache.drill.exec.record.metadata.*;
+import org.apache.drill.exec.physical.base.AbstractGroupScanWithMetadata;
+import org.apache.drill.exec.record.metadata.TupleSchema;
 import org.apache.drill.exec.store.dfs.FileSelection;
-import org.apache.drill.exec.store.dfs.ReadEntryWithPath;
 import org.apache.drill.exec.store.parquet.metadata.Metadata;
 import org.apache.drill.exec.store.parquet.metadata.MetadataBase;
 import org.apache.drill.exec.store.parquet.metadata.Metadata_V3;
@@ -56,14 +55,12 @@ import org.apache.parquet.hadoop.util.HadoopInputFile;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 public abstract class AbstractParquetScanBatchCreator {
 
@@ -102,6 +99,10 @@ public abstract class AbstractParquetScanBatchCreator {
       Metadata_V3.ParquetFileMetadata_v3 fileMetadataV3 = null;
       FileSelection fileSelection = null;
       // ParquetTableMetadataProviderImpl metadataProvider = null;
+      FilterPredicate filterPredicate = AbstractGroupScanWithMetadata.getFilterPredicate(filterExpr, context,
+        (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true,
+        true /* supports file implicit columns */,
+        tupleSchema);
 
       for (RowGroupReadEntry rowGroup : rowGroupScan.getRowGroupReadEntries()) {
         /*
@@ -164,17 +165,14 @@ public abstract class AbstractParquetScanBatchCreator {
 
             Map<SchemaPath, ColumnStatistics> columnsStatistics = ParquetTableMetadataUtils.getRowGroupColumnStatistics(tableMetadataV3, rowGroupMetadata);
 
-            List<SchemaPath> columns = columnsStatistics.keySet().stream().collect(Collectors.toList());
+            // List<SchemaPath> columns = columnsStatistics.keySet().stream().collect(Collectors.toList());
 
             // ParquetGroupScan parquetGroupScan = new ParquetGroupScan( context.getQueryUserName(), metadataProvider, fileSelection, columns, readerConfig, filterExpr);
 
             // FilterPredicate filterPredicate = parquetGroupScan.getFilterPredicate(filterExpr, context, (FunctionImplementationRegistry) context.getFunctionRegistry(),
             //  context.getOptions(), true);
 
-            FilterPredicate filterPredicate = AbstractGroupScanWithMetadata.getFilterPredicate(filterExpr, context,
-                    (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true,
-                    true /* supports file implicit columns */,
-                     tupleSchema);
+
 
             //
             // Perform the Run-Time Pruning - i.e. Skip this rowgroup if the match fails
