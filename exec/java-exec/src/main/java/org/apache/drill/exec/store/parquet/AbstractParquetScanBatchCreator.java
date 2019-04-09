@@ -56,10 +56,12 @@ import org.apache.parquet.hadoop.util.HadoopInputFile;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public abstract class AbstractParquetScanBatchCreator {
@@ -91,6 +93,8 @@ public abstract class AbstractParquetScanBatchCreator {
     try {
 
       LogicalExpression filterExpr = rowGroupScan.getFilter();
+      boolean doRuntimePruning = filterExpr != null && // was a filter given ?   And it is not just a "TRUE" predicate
+        ! ((filterExpr instanceof ValueExpressions.BooleanExpression) && ((ValueExpressions.BooleanExpression) filterExpr).getBoolean() );
       Path selectionRoot = rowGroupScan.getSelectionRoot();
       // Runtime pruning: Avoid recomputing metadata objects for each row-group in case they use the same file
       // by keeping the following objects computed earlier (relies on same file being in consecutive rowgroups)
@@ -98,11 +102,22 @@ public abstract class AbstractParquetScanBatchCreator {
       Metadata_V3.ParquetTableMetadata_v3 tableMetadataV3 = null;
       Metadata_V3.ParquetFileMetadata_v3 fileMetadataV3 = null;
       FileSelection fileSelection = null;
-      // ParquetTableMetadataProviderImpl metadataProvider = null;
-      FilterPredicate filterPredicate = AbstractGroupScanWithMetadata.getFilterPredicate(filterExpr, context,
-        (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true,
-        true /* supports file implicit columns */,
-        tupleSchema);
+      FilterPredicate filterPredicate = null;
+      Set<SchemaPath> schemaPathsInExpr = null;
+      Set<String> columnsInExpr = null;
+
+      // If pruning - Prepare the predicate and the columns before the FOR LOOP
+      if ( doRuntimePruning ) {
+        filterPredicate = AbstractGroupScanWithMetadata.getFilterPredicate(filterExpr, context,
+          (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true,
+          true /* supports file implicit columns */,
+          tupleSchema);
+        schemaPathsInExpr = filterExpr.accept(new FilterEvaluatorUtils.FieldReferenceFinder(), null);
+        columnsInExpr = new HashSet<>();
+        for (SchemaPath path : schemaPathsInExpr) {
+          columnsInExpr.add(path.getRootSegmentPath());
+        }
+      }
 
       for (RowGroupReadEntry rowGroup : rowGroupScan.getRowGroupReadEntries()) {
         /*
@@ -132,7 +147,7 @@ public abstract class AbstractParquetScanBatchCreator {
           //
           //   If a filter is given (and it is not just "TRUE") - then use it to perform run-time pruning
           //
-          if ( filterExpr != null && ! (filterExpr instanceof ValueExpressions.BooleanExpression)  ) { // skip when no filter or filter is TRUE
+          if ( doRuntimePruning  ) { // skip when no filter or filter is TRUE
 
             int rowGroupIndex = rowGroup.getRowGroupIndex();
             long footerRowCount = footer.getBlocks().get(rowGroupIndex).getRowCount();
@@ -142,21 +157,16 @@ public abstract class AbstractParquetScanBatchCreator {
               timer.start();
             }
 
-            // When starting a new file, or at the first time - Initialize path specific metadata etc
+            // When starting a new file, or at the first time - Initialize the path specific metadata
             if ( ! rowGroup.getPath().equals(prevRowGroupPath) ) {
-              // Get the table metadata (V3)
-              tableMetadataV3 = Metadata.getParquetTableMetadata(footer, fs, rowGroup.getPath().toString(), readerConfig);
+              // Create a table metadata (V3)
+              tableMetadataV3 = new Metadata_V3.ParquetTableMetadata_v3();
 
               // The file status for this file
               FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
-              // List<FileStatus> listFileStatus = new ArrayList<>(Arrays.asList(fileStatus));
-              // List<Path> listRowGroupPath = new ArrayList<>(Arrays.asList(rowGroup.getPath()));
-              // List<ReadEntryWithPath> entries = new ArrayList<>(Arrays.asList(new ReadEntryWithPath(rowGroup.getPath())));
-              // fileSelection = new FileSelection(listFileStatus, listRowGroupPath, selectionRoot);
 
-              // metadataProvider = new ParquetTableMetadataProviderImpl(entries, selectionRoot, fileSelection.cacheFileRoot, readerConfig, fs,false);
-              // The file metadata (for all columns)
-              fileMetadataV3 = Metadata.getParquetFileMetadata_v3(tableMetadataV3, footer, fileStatus, fs, true, null, readerConfig);
+              // The file metadata (only for the columns used in the filter)
+              fileMetadataV3 = Metadata.getParquetFileMetadata_v3(tableMetadataV3, footer, fileStatus, fs, false, columnsInExpr, readerConfig);
 
               prevRowGroupPath = rowGroup.getPath(); // for next time
             }
@@ -164,15 +174,6 @@ public abstract class AbstractParquetScanBatchCreator {
             MetadataBase.RowGroupMetadata rowGroupMetadata = fileMetadataV3.getRowGroups().get(rowGroup.getRowGroupIndex());
 
             Map<SchemaPath, ColumnStatistics> columnsStatistics = ParquetTableMetadataUtils.getRowGroupColumnStatistics(tableMetadataV3, rowGroupMetadata);
-
-            // List<SchemaPath> columns = columnsStatistics.keySet().stream().collect(Collectors.toList());
-
-            // ParquetGroupScan parquetGroupScan = new ParquetGroupScan( context.getQueryUserName(), metadataProvider, fileSelection, columns, readerConfig, filterExpr);
-
-            // FilterPredicate filterPredicate = parquetGroupScan.getFilterPredicate(filterExpr, context, (FunctionImplementationRegistry) context.getFunctionRegistry(),
-            //  context.getOptions(), true);
-
-
 
             //
             // Perform the Run-Time Pruning - i.e. Skip this rowgroup if the match fails
@@ -194,7 +195,7 @@ public abstract class AbstractParquetScanBatchCreator {
           }
 
           mapWithMaxColumns = createReaderAndImplicitColumns(context, rowGroupScan, oContext, columnExplorer, readers, implicitColumns, mapWithMaxColumns, rowGroup,
-           fs, footer, false);
+           fs, footer /*, false */);
       }
 
       // in case all row groups were pruned out - create a single reader for the first one (so that the schema could be returned)
@@ -202,7 +203,7 @@ public abstract class AbstractParquetScanBatchCreator {
         logger.trace("All row groups were pruned out. Returning the first: {} (row count {}) for its schema", firstRowGroup.getPath(), firstRowGroup.getNumRecordsToRead());
         DrillFileSystem fs = fsManager.get(rowGroupScan.getFsConf(firstRowGroup), firstRowGroup.getPath());
         mapWithMaxColumns = createReaderAndImplicitColumns(context, rowGroupScan, oContext, columnExplorer, readers, implicitColumns, mapWithMaxColumns, firstRowGroup, fs,
-          firstFooter, true);
+          firstFooter /*, true */);
       }
 
       // Update stats (same in every reader - the others would just overwrite the stats)
@@ -228,18 +229,18 @@ public abstract class AbstractParquetScanBatchCreator {
   /**
    *  Create a reader and add it to the list of readers.
    *
-   * @param context
-   * @param rowGroupScan
-   * @param oContext
-   * @param columnExplorer
-   * @param readers
-   * @param implicitColumns
-   * @param mapWithMaxColumns
-   * @param rowGroup
-   * @param fs
-   * @param footer
-   * @param readSchemaOnly - if true sets the number of rows to read to be zero
-   * @return
+   * @param context The fragment context
+   * @param rowGroupScan RowGroup Scan
+   * @param oContext Operator context
+   * @param columnExplorer The column helper class object
+   * @param readers the readers' list where a new reader is added to
+   * @param implicitColumns the implicit columns list
+   * @param mapWithMaxColumns To be modified, in case there are implicit columns
+   * @param rowGroup create a reader for this specific row group
+   * @param fs file system
+   * @param footer this file's footer
+   * // @param readSchemaOnly - if true sets the number of rows to read to be zero
+   * @return the (possibly modified) input  mapWithMaxColumns
    */
   private Map<String, String> createReaderAndImplicitColumns(ExecutorFragmentContext context,
                                                              AbstractParquetRowGroupScan rowGroupScan,
@@ -250,8 +251,9 @@ public abstract class AbstractParquetScanBatchCreator {
                                                              Map<String, String> mapWithMaxColumns,
                                                              RowGroupReadEntry rowGroup,
                                                              DrillFileSystem fs,
-                                                             ParquetMetadata footer,
-                                                             boolean readSchemaOnly) {
+                                                             ParquetMetadata footer
+                                                             // ,boolean readSchemaOnly -- TODO:
+  ) {
     ParquetReaderConfig readerConfig = rowGroupScan.getReaderConfig();
     ParquetReaderUtility.DateCorruptionStatus containsCorruptDates = ParquetReaderUtility.detectCorruptDates(footer,
       rowGroupScan.getColumns(), readerConfig.autoCorrectCorruptedDates());
@@ -274,7 +276,7 @@ public abstract class AbstractParquetScanBatchCreator {
       reader = new ParquetRecordReader(context,
           rowGroup.getPath(),
           rowGroup.getRowGroupIndex(),
-          rowGroup.getNumRecordsToRead(), // if readSchemaOnly - then set to zero rows to read (currently breaks the ScanBatch)
+          rowGroup.getNumRecordsToRead(), // TODO: if readSchemaOnly - then set to zero rows to read (currently breaks the ScanBatch)
           fs,
           CodecFactory.createDirectCodecFactory(fs.getConf(), new ParquetDirectByteBufferAllocator(oContext.getAllocator()), 0),
           footer,

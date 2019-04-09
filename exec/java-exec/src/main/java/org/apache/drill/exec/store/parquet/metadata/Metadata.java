@@ -134,9 +134,9 @@ public class Metadata {
 
   /**
    *  When the footer is not yet available (it would be read)
-   * @param fs
-   * @param path
-   * @param readerConfig
+   * @param fs file system
+   * @param path path
+   * @param readerConfig parquet reader configuration
    * @return parquet table metadata
    * @throws IOException
    */

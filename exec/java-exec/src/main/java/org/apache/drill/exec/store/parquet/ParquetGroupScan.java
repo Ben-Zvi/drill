@@ -52,7 +52,6 @@ public class ParquetGroupScan extends AbstractParquetGroupScan {
 
   private final ParquetFormatPlugin formatPlugin;
   private final ParquetFormatConfig formatConfig;
-  private final Collection<DrillbitEndpoint> drillbitEndpoints;
 
   private boolean usedMetadataCache; // false by default
   // may change when filter push down / partition pruning is applied
@@ -78,7 +77,6 @@ public class ParquetGroupScan extends AbstractParquetGroupScan {
     this.formatPlugin =
         Preconditions.checkNotNull((ParquetFormatPlugin) engineRegistry.getFormatPlugin(storageConfig, formatConfig));
     this.formatConfig = this.formatPlugin.getConfig();
-    this.drillbitEndpoints = this.formatPlugin.getContext().getBits();
     DrillFileSystem fs =
         ImpersonationUtil.createFileSystem(ImpersonationUtil.resolveUserName(userName), formatPlugin.getFsConf());
 
@@ -111,7 +109,6 @@ public class ParquetGroupScan extends AbstractParquetGroupScan {
 
     this.formatPlugin = formatPlugin;
     this.formatConfig = formatPlugin.getConfig();
-    this.drillbitEndpoints = this.formatPlugin.getContext().getBits();
     this.cacheFileRoot = selection.getCacheFileRoot();
 
     DrillFileSystem fs = ImpersonationUtil.createFileSystem(ImpersonationUtil.resolveUserName(userName), formatPlugin.getFsConf());
@@ -119,39 +116,6 @@ public class ParquetGroupScan extends AbstractParquetGroupScan {
         formatConfig.areCorruptDatesAutoCorrected());
 
     ParquetTableMetadataProvider metadataProvider = (ParquetTableMetadataProvider) this.metadataProvider;
-    this.usedMetadataCache = metadataProvider.isUsedMetadataCache();
-    this.selectionRoot = metadataProvider.getSelectionRoot();
-    this.entries = metadataProvider.getEntries();
-    this.fileSet = metadataProvider.getFileSet();
-
-    init();
-  }
-
-  /**
-   *   Added to be used by the runtime
-   *
-   * @param userName
-   * @param metadataProvider
-   * @param selection
-   * @param columns
-   * @param readerConfig
-   * @param filter
-   * @throws IOException
-   */
-  public ParquetGroupScan(String userName,
-                          ParquetTableMetadataProviderImpl metadataProvider,
-                          FileSelection selection,
-                          List<SchemaPath> columns,
-                          ParquetReaderConfig readerConfig,
-                          LogicalExpression filter) throws IOException {
-    super(userName, columns, new ArrayList<>(), readerConfig, filter);
-
-    this.formatPlugin = null; // formatPlugin;
-    this.formatConfig = null; // formatPlugin.getConfig();
-    this.drillbitEndpoints = new ArrayList<>(); // this.formatPlugin.getContext().getBits();
-    this.cacheFileRoot = selection.getCacheFileRoot();
-
-    this.metadataProvider = metadataProvider;
     this.usedMetadataCache = metadataProvider.isUsedMetadataCache();
     this.selectionRoot = metadataProvider.getSelectionRoot();
     this.entries = metadataProvider.getEntries();
@@ -177,7 +141,6 @@ public class ParquetGroupScan extends AbstractParquetGroupScan {
     super(that);
     this.formatConfig = that.formatConfig;
     this.formatPlugin = that.formatPlugin;
-    this.drillbitEndpoints = that.drillbitEndpoints;
     this.selectionRoot = that.selectionRoot;
     this.cacheFileRoot = selection == null ? that.cacheFileRoot : selection.getCacheFileRoot();
     this.usedMetadataCache = that.usedMetadataCache;
@@ -281,7 +244,7 @@ public class ParquetGroupScan extends AbstractParquetGroupScan {
 
   @Override
   protected Collection<DrillbitEndpoint> getDrillbits() {
-    return drillbitEndpoints;
+    return formatPlugin.getContext().getBits();
   }
 
   @Override
