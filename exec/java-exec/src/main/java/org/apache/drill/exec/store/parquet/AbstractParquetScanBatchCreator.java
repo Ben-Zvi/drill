@@ -95,7 +95,7 @@ public abstract class AbstractParquetScanBatchCreator {
       LogicalExpression filterExpr = rowGroupScan.getFilter();
       boolean doRuntimePruning = filterExpr != null && // was a filter given ?   And it is not just a "TRUE" predicate
         ! ((filterExpr instanceof ValueExpressions.BooleanExpression) && ((ValueExpressions.BooleanExpression) filterExpr).getBoolean() );
-      Path selectionRoot = rowGroupScan.getSelectionRoot();
+
       // Runtime pruning: Avoid recomputing metadata objects for each row-group in case they use the same file
       // by keeping the following objects computed earlier (relies on same file being in consecutive rowgroups)
       Path prevRowGroupPath = null;

@@ -61,15 +61,6 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
     this.tupleSchema = tupleSchema;
   }
 
-  // This ctor is used by HiveDrillNativeParquetRowGroupScan which has no selection root
-  protected AbstractParquetRowGroupScan(String userName,
-                                        List<RowGroupReadEntry> rowGroupReadEntries,
-                                        List<SchemaPath> columns,
-                                        ParquetReaderConfig readerConfig,
-                                        LogicalExpression filter) {
-    this(userName,rowGroupReadEntries, columns, readerConfig, filter, null, null);
-  }
-
   @JsonProperty
   public List<RowGroupReadEntry> getRowGroupReadEntries() {
     return rowGroupReadEntries;
@@ -112,11 +103,11 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
     return Collections.emptyIterator();
   }
 
-  @JsonProperty
+  /*@JsonProperty
   public Path getSelectionRoot() {
     return selectionRoot;
   }
-
+*/
   @JsonProperty
   public TupleSchema getTupleSchema() { return tupleSchema; }
 

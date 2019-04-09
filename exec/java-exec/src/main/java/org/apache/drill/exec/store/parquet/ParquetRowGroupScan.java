@@ -100,7 +100,7 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
   @Override
   public PhysicalOperator getNewWithChildren(List<PhysicalOperator> children) {
     Preconditions.checkArgument(children.isEmpty());
-    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, getSelectionRoot(), filter, tupleSchema);
+    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, selectionRoot, filter, tupleSchema);
   }
 
   @Override
@@ -110,7 +110,7 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
 
   @Override
   public AbstractParquetRowGroupScan copy(List<SchemaPath> columns) {
-    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, getSelectionRoot(), filter, tupleSchema);
+    return new ParquetRowGroupScan(getUserName(), formatPlugin, rowGroupReadEntries, columns, readerConfig, selectionRoot, filter, tupleSchema);
   }
 
   @Override
@@ -120,12 +120,12 @@ public class ParquetRowGroupScan extends AbstractParquetRowGroupScan {
 
   @Override
   public boolean supportsFileImplicitColumns() {
-    return getSelectionRoot() != null;
+    return selectionRoot != null;
   }
 
   @Override
   public List<String> getPartitionValues(RowGroupReadEntry rowGroupReadEntry) {
-    return ColumnExplorer.listPartitionValues(rowGroupReadEntry.getPath(), getSelectionRoot(), false);
+    return ColumnExplorer.listPartitionValues(rowGroupReadEntry.getPath(), selectionRoot, false);
   }
 }
 

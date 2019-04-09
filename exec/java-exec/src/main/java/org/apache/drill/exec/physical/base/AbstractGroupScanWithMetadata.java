@@ -44,7 +44,7 @@ import org.apache.drill.exec.server.options.OptionManager;
 import org.apache.drill.exec.store.ColumnExplorer;
 import org.apache.drill.exec.store.dfs.FileSelection;
 import org.apache.drill.exec.store.parquet.FilterEvaluatorUtils;
-import org.apache.drill.exec.store.parquet.ParquetGroupScan;
+// import org.apache.drill.exec.store.parquet.ParquetGroupScan;
 import org.apache.drill.exec.store.parquet.ParquetTableMetadataUtils;
 import org.apache.drill.metastore.BaseMetadata;
 import org.apache.drill.metastore.ColumnStatistics;
@@ -70,7 +70,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static org.apache.drill.exec.ExecConstants.HIVE_OPTIMIZE_SCAN_WITH_NATIVE_READERS;
+// import static org.apache.drill.exec.ExecConstants.HIVE_OPTIMIZE_SCAN_WITH_NATIVE_READERS;
 import static org.apache.drill.exec.ExecConstants.SKIP_RUNTIME_ROWGROUP_PRUNING_KEY;
 
 /**
@@ -202,7 +202,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
     boolean skipRuntimePruning = options.getBoolean(SKIP_RUNTIME_ROWGROUP_PRUNING_KEY) ||  // if option is set to disable runtime pruning
       // or when this is a HiveDrillNativeParquetScan
       // (Currently runtime pruning does not work correctly in HIVE_DRILL_NATIVE_PARQUET_ROW_GROUP_SCAN)
-      ( ! (this instanceof ParquetGroupScan) && options.getBoolean(HIVE_OPTIMIZE_SCAN_WITH_NATIVE_READERS) );
+      false; // ( ! (this instanceof ParquetGroupScan) && options.getBoolean(HIVE_OPTIMIZE_SCAN_WITH_NATIVE_READERS) );
 
     if ( ! skipRuntimePruning ) { setFilter(filterExpr); }
   }
