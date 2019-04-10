@@ -127,21 +127,9 @@ public class Metadata {
    *
    * @return parquet table metadata
    */
-  public static ParquetTableMetadata_v3 getParquetTableMetadata(ParquetMetadata footer, FileSystem fs, String path, ParquetReaderConfig readerConfig) throws IOException {
-    Metadata metadata = new Metadata(readerConfig);
-    return metadata.getParquetTableMetadata(path, fs, footer);
-  }
-
-  /**
-   *  When the footer is not yet available (it would be read)
-   * @param fs file system
-   * @param path path
-   * @param readerConfig parquet reader configuration
-   * @return parquet table metadata
-   * @throws IOException
-   */
   public static ParquetTableMetadata_v3 getParquetTableMetadata(FileSystem fs, String path, ParquetReaderConfig readerConfig) throws IOException {
-    return getParquetTableMetadata(null, fs, path, readerConfig);
+    Metadata metadata = new Metadata(readerConfig);
+    return metadata.getParquetTableMetadata(path, fs);
   }
 
   /**
@@ -152,22 +140,9 @@ public class Metadata {
    * @return parquet table metadata
    */
   public static ParquetTableMetadata_v3 getParquetTableMetadata(Map<FileStatus, FileSystem> fileStatusMap,
-                                                                ParquetMetadata footer,
                                                                 ParquetReaderConfig readerConfig) throws IOException {
     Metadata metadata = new Metadata(readerConfig);
-    return metadata.getParquetTableMetadata(fileStatusMap, footer);
-  }
-
-  /**
-   * When the footer is not yet available (it would be read) -- Get the parquet metadata for a list of parquet files.
-   *
-   * @param fileStatusMap file statuses and corresponding file systems
-   * @param readerConfig parquet reader configuration
-   * @return parquet table metadata
-   */
-  public static ParquetTableMetadata_v3 getParquetTableMetadata(Map<FileStatus, FileSystem> fileStatusMap,
-                                                                ParquetReaderConfig readerConfig) throws IOException {
-    return getParquetTableMetadata(fileStatusMap, null /* no footer */, readerConfig);
+    return metadata.getParquetTableMetadata(fileStatusMap);
   }
 
   /**
@@ -292,7 +267,7 @@ public class Metadata {
     ParquetTableMetadata_v3 parquetTableMetadata = new ParquetTableMetadata_v3(SUPPORTED_VERSIONS.last().toString(),
                                                                                 DrillVersionInfo.getVersion());
     if (childFiles.size() > 0) {
-      List<ParquetFileMetadata_v3 > childFilesMetadata = getParquetFileMetadata_v3(parquetTableMetadata, null /* no footer */, childFiles, allColumns, columnSet);
+      List<ParquetFileMetadata_v3 > childFilesMetadata = getParquetFileMetadata_v3(parquetTableMetadata, childFiles, allColumns, columnSet);
       metaDataList.addAll(childFilesMetadata);
       // Note that we do not need to merge the columnInfo at this point. The columnInfo is already added
       // to the parquetTableMetadata.
@@ -339,7 +314,7 @@ public class Metadata {
    * @return metadata object for an entire parquet directory structure
    * @throws IOException in case of problems during accessing files
    */
-  private ParquetTableMetadata_v3 getParquetTableMetadata(String path, FileSystem fs, ParquetMetadata footer) throws IOException {
+  private ParquetTableMetadata_v3 getParquetTableMetadata(String path, FileSystem fs) throws IOException {
     Path p = new Path(path);
     FileStatus fileStatus = fs.getFileStatus(p);
     Stopwatch watch = logger.isDebugEnabled() ? Stopwatch.createStarted() : null;
@@ -363,7 +338,7 @@ public class Metadata {
                 (oldFs, newFs) -> newFs,
                 LinkedHashMap::new));
 
-    ParquetTableMetadata_v3 metadata_v3 = getParquetTableMetadata(fileStatusMap, footer);
+    ParquetTableMetadata_v3 metadata_v3 = getParquetTableMetadata(fileStatusMap);
     if (watch != null) {
       logger.debug("Took {} ms to read file metadata", watch.elapsed(TimeUnit.MILLISECONDS));
       watch.stop();
@@ -378,11 +353,11 @@ public class Metadata {
    * @return parquet table metadata object
    * @throws IOException if parquet file metadata can't be obtained
    */
-  private ParquetTableMetadata_v3 getParquetTableMetadata(Map<FileStatus, FileSystem> fileStatusMap, ParquetMetadata footer)
+  private ParquetTableMetadata_v3 getParquetTableMetadata(Map<FileStatus, FileSystem> fileStatusMap)
       throws IOException {
     ParquetTableMetadata_v3 tableMetadata = new ParquetTableMetadata_v3(SUPPORTED_VERSIONS.last().toString(),
                                                                         DrillVersionInfo.getVersion());
-    tableMetadata.files = getParquetFileMetadata_v3(tableMetadata, footer, fileStatusMap, true, null);
+    tableMetadata.files = getParquetFileMetadata_v3(tableMetadata, fileStatusMap, true, null);
     tableMetadata.directories = new ArrayList<>();
     return tableMetadata;
   }
@@ -398,11 +373,10 @@ public class Metadata {
    * @return list of the parquet file metadata with absolute paths
    * @throws IOException is thrown in case of issues while executing the list of runnables
    */
-  private List<ParquetFileMetadata_v3> getParquetFileMetadata_v3(ParquetTableMetadata_v3 parquetTableMetadata_v3, ParquetMetadata footer, Map<FileStatus, FileSystem> fileStatusMap,
-                                                                 boolean allColumns, Set<String> columnSet) throws IOException {
+  private List<ParquetFileMetadata_v3> getParquetFileMetadata_v3(ParquetTableMetadata_v3 parquetTableMetadata_v3, Map<FileStatus, FileSystem> fileStatusMap, boolean allColumns, Set<String> columnSet) throws IOException {
     return TimedCallable.run("Fetch parquet metadata", logger,
         Collectors.toList(fileStatusMap,
-            (fileStatus, fileSystem) -> new MetadataGatherer(parquetTableMetadata_v3, footer, fileStatus, fileSystem, allColumns, columnSet)),
+            (fileStatus, fileSystem) -> new MetadataGatherer(parquetTableMetadata_v3, fileStatus, fileSystem, allColumns, columnSet)),
         16
     );
   }
@@ -417,20 +391,18 @@ public class Metadata {
     private final FileSystem fs;
     private final boolean allColumns;
     private final Set<String> columnSet;
-    private final ParquetMetadata footer;
 
-    MetadataGatherer(ParquetTableMetadata_v3 parquetTableMetadata, ParquetMetadata footer,FileStatus fileStatus, FileSystem fs, boolean allColumns, Set<String> columnSet) {
+    MetadataGatherer(ParquetTableMetadata_v3 parquetTableMetadata, FileStatus fileStatus, FileSystem fs, boolean allColumns, Set<String> columnSet) {
       this.parquetTableMetadata = parquetTableMetadata;
       this.fileStatus = fileStatus;
       this.fs = fs;
       this.allColumns = allColumns;
       this.columnSet = columnSet;
-      this.footer = footer;
     }
 
     @Override
     protected ParquetFileMetadata_v3 runInner() throws Exception {
-      return getParquetFileMetadata_v3(parquetTableMetadata, footer, fileStatus, fs, allColumns, columnSet, readerConfig);
+      return getParquetFileMetadata_v3(parquetTableMetadata, fileStatus, fs, allColumns, columnSet, readerConfig);
     }
 
     public String toString() {
@@ -473,12 +445,19 @@ public class Metadata {
     }
   }
 
+  // A private version of the following static method, with no footer given
+  private ParquetFileMetadata_v3 getParquetFileMetadata_v3(ParquetTableMetadata_v3 parquetTableMetadata,
+                                                                 final FileStatus file, final FileSystem fs, boolean allColumns, Set<String> columnSet, ParquetReaderConfig readerConfig)
+    throws IOException, InterruptedException {
+    return getParquetFileMetadata_v3(parquetTableMetadata, null /* no footer */, file, fs, allColumns, columnSet, readerConfig);
+  }
   /**
    * Get the metadata for a single file
    */
   public static ParquetFileMetadata_v3 getParquetFileMetadata_v3(ParquetTableMetadata_v3 parquetTableMetadata, ParquetMetadata footer,
-     final FileStatus file, final FileSystem fs, boolean allColumns, Set<String> columnSet, ParquetReaderConfig readerConfig) throws IOException, InterruptedException {
-    ParquetMetadata metadata = footer;
+     final FileStatus file, final FileSystem fs, boolean allColumns, Set<String> columnSet, ParquetReaderConfig readerConfig)
+    throws IOException, InterruptedException {
+    ParquetMetadata metadata = footer; // if a non-null footer is given, no need to read it again from the file
     if ( metadata == null ) {
       final UserGroupInformation processUserUgi = ImpersonationUtil.getProcessUserUGI();
       final Configuration conf = new Configuration(fs.getConf());
