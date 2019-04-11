@@ -67,6 +67,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Utility class for converting parquet metadata classes to metastore metadata classes.
@@ -301,8 +302,10 @@ public class ParquetTableMetadataUtils {
           Set<SchemaPath> schemaPaths, MetadataBase.ParquetTableMetadataBase parquetTableMetadata) {
     Map<SchemaPath, ColumnStatistics> columnsStatistics = new HashMap<>();
     if (parquetTableMetadata instanceof Metadata_V4.ParquetTableMetadata_v4) {
-      for (Metadata_V4.ColumnTypeMetadata_v4 columnTypeMetadata :
-          ((Metadata_V4.ParquetTableMetadata_v4) parquetTableMetadata).getColumnTypeInfoMap().values()) {
+      ConcurrentHashMap<Metadata_V4.ColumnTypeMetadata_v4.Key, Metadata_V4.ColumnTypeMetadata_v4 > infoMap =
+        ((Metadata_V4.ParquetTableMetadata_v4) parquetTableMetadata).getColumnTypeInfoMap();
+      if ( infoMap == null ) { return columnsStatistics; }
+      for (Metadata_V4.ColumnTypeMetadata_v4 columnTypeMetadata : infoMap.values()) {
         SchemaPath schemaPath = SchemaPath.getCompoundPath(columnTypeMetadata.name);
         if (!schemaPaths.contains(schemaPath)) {
           Map<StatisticsKind, Object> statistics = new HashMap<>();
