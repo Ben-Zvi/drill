@@ -112,11 +112,18 @@ public abstract class AbstractParquetScanBatchCreator {
           (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true,
           true /* supports file implicit columns */,
           tupleSchema);
+        // Extract only the relevant columns from the filter (sans implicit columns, if any)
         schemaPathsInExpr = filterExpr.accept(new FilterEvaluatorUtils.FieldReferenceFinder(), null);
         columnsInExpr = new HashSet<>();
+        String partitionColumnLabel = context.getOptions().getOption(ExecConstants.FILESYSTEM_PARTITION_COLUMN_LABEL).string_val;
         for (SchemaPath path : schemaPathsInExpr) {
+          if (rowGroupScan.supportsFileImplicitColumns() &&
+            path.toString().matches(partitionColumnLabel+"\\d+")) {
+            continue;  // skip implicit columns like dir0, dir1
+          }
           columnsInExpr.add(path.getRootSegmentPath());
         }
+        doRuntimePruning = ! columnsInExpr.isEmpty(); // just in case: if no columns - cancel pruning
       }
 
       for (RowGroupReadEntry rowGroup : rowGroupScan.getRowGroupReadEntries()) {
