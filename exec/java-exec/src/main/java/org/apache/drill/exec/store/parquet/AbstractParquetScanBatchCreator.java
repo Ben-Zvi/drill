@@ -173,7 +173,7 @@ public abstract class AbstractParquetScanBatchCreator {
               FileStatus fileStatus = fs.getFileStatus(rowGroup.getPath());
 
               // The file metadata (only for the columns used in the filter)
-              fileMetadataV4 = Metadata.getParquetFileMetadata_v4(tableMetadataV4, footer, fileStatus, fs, false, columnsInExpr, readerConfig);
+              fileMetadataV4 = Metadata.getParquetFileMetadata_v4(tableMetadataV4, footer, fileStatus, fs, false, columnsInExpr, true,readerConfig);
 
               prevRowGroupPath = rowGroup.getPath(); // for next time
             }

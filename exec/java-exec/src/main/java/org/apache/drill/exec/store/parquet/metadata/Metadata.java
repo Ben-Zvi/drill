@@ -519,7 +519,7 @@ public class Metadata {
                                                            boolean allColumnsInteresting, Set<String> columnSet,
                                                            ParquetReaderConfig readerConfig)
     throws IOException, InterruptedException {
-    return getParquetFileMetadata_v4(parquetTableMetadata, null /* no footer */, file, fs, allColumnsInteresting, columnSet, readerConfig);
+    return getParquetFileMetadata_v4(parquetTableMetadata, null /* no footer */, file, fs, allColumnsInteresting, columnSet, false,readerConfig);
   }
   /**
    * Get the metadata for a single file
@@ -527,7 +527,7 @@ public class Metadata {
   public static ParquetFileAndRowCountMetadata getParquetFileMetadata_v4(ParquetTableMetadata_v4 parquetTableMetadata,
                                                                          ParquetMetadata footer,
                                                                          final FileStatus file, final FileSystem fs,
-                                                                         boolean allColumnsInteresting, Set<String> columnSet,
+                                                                         boolean allColumnsInteresting, Set<String> columnSet, boolean skipNonInteresting,
                                                                          ParquetReaderConfig readerConfig)
     throws IOException, InterruptedException {
     Map<ColumnTypeMetadata_v4.Key, Long> totalNullCountMap = new HashMap<>();
@@ -572,6 +572,8 @@ public class Metadata {
       for (ColumnChunkMetaData col : rowGroup.getColumns()) {
         String[] columnName = col.getPath().toArray();
         SchemaPath columnSchemaName = SchemaPath.getCompoundPath(columnName);
+        boolean thisColumnIsInteresting = allColumnsInteresting || columnSet == null || columnSet.contains(columnSchemaName.getRootSegmentPath());
+        if ( skipNonInteresting && ! thisColumnIsInteresting ) { continue; }
         ColTypeInfo colTypeInfo = colTypeInfoMap.get(columnSchemaName);
         Statistics<?> stats = col.getStatistics();
         long totalNullCount = stats.getNumNulls();
@@ -590,7 +592,7 @@ public class Metadata {
           long nullCount = totalNullCountMap.get(columnTypeMetadataKey) + totalNullCount;
           totalNullCountMap.put(columnTypeMetadataKey, nullCount);
         }
-        if (allColumnsInteresting || columnSet == null || columnSet.contains(columnSchemaName.getRootSegmentPath())) {
+        if ( thisColumnIsInteresting ) {
           // Save the column schema info. We'll merge it into one list
           Object minValue = null;
           Object maxValue = null;
