@@ -519,15 +519,27 @@ public class Metadata {
                                                            boolean allColumnsInteresting, Set<String> columnSet,
                                                            ParquetReaderConfig readerConfig)
     throws IOException, InterruptedException {
-    return getParquetFileMetadata_v4(parquetTableMetadata, null /* no footer */, file, fs, allColumnsInteresting, columnSet, false,readerConfig);
+    return getParquetFileMetadata_v4(parquetTableMetadata, null /* no footer */, file, fs, allColumnsInteresting, false, columnSet, readerConfig);
   }
   /**
-   * Get the metadata for a single file
+   * Get the file metadata for a single file
+   *
+   * @param parquetTableMetadata The table metadata to be updated with all the columns' info
+   * @param footer If non null, use this footer instead of reading it from the file
+   * @param file The file
+   * @param allColumnsInteresting If true, read the min/max metadata for all the columns
+   * @param skipNonInteresting If true, collect info only for the interesting columns
+   * @param columnSet Specifies specific columns for which min/max metadata is collected
+   * @param readerConfig for the options
+   * @return the file metadata
    */
   public static ParquetFileAndRowCountMetadata getParquetFileMetadata_v4(ParquetTableMetadata_v4 parquetTableMetadata,
                                                                          ParquetMetadata footer,
-                                                                         final FileStatus file, final FileSystem fs,
-                                                                         boolean allColumnsInteresting, Set<String> columnSet, boolean skipNonInteresting,
+                                                                         final FileStatus file,
+                                                                         final FileSystem fs,
+                                                                         boolean allColumnsInteresting,
+                                                                         boolean skipNonInteresting,
+                                                                         Set<String> columnSet,
                                                                          ParquetReaderConfig readerConfig)
     throws IOException, InterruptedException {
     Map<ColumnTypeMetadata_v4.Key, Long> totalNullCountMap = new HashMap<>();

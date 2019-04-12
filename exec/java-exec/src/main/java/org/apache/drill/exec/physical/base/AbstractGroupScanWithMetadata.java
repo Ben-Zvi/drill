@@ -204,11 +204,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
    */
   public void setFilterForRuntime(LogicalExpression filterExpr, OptimizerRulesContext optimizerContext) {
     OptionManager options = optimizerContext.getPlannerSettings().getOptions();
-    boolean skipRuntimePruning = options.getBoolean(SKIP_RUNTIME_ROWGROUP_PRUNING_KEY) ||  // if option is set to disable runtime pruning
-      // or when this is a HiveDrillNativeParquetScan
-      // (Currently runtime pruning does not work correctly in HIVE_DRILL_NATIVE_PARQUET_ROW_GROUP_SCAN)
-      false; // ( ! (this instanceof ParquetGroupScan) && options.getBoolean(HIVE_OPTIMIZE_SCAN_WITH_NATIVE_READERS) );
-
+    boolean skipRuntimePruning = options.getBoolean(SKIP_RUNTIME_ROWGROUP_PRUNING_KEY); // if option is set to disable runtime pruning
     if ( ! skipRuntimePruning ) { setFilter(filterExpr); }
   }
 
