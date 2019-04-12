@@ -103,11 +103,11 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
     return Collections.emptyIterator();
   }
 
-  /*@JsonProperty
+  @JsonProperty
   public Path getSelectionRoot() {
     return selectionRoot;
   }
-*/
+
   @JsonProperty
   public TupleSchema getTupleSchema() { return tupleSchema; }
 
