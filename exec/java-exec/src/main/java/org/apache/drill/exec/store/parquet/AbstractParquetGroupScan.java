@@ -219,6 +219,10 @@ public abstract class AbstractParquetGroupScan extends AbstractGroupScanWithMeta
       return null;
     }
 
+    if (this.runtimeFilterPredicate == null) {
+      this.runtimeFilterPredicate = filterPredicate;
+    }
+
     Set<SchemaPath> schemaPathsInExpr =
         filterExpr.accept(new FilterEvaluatorUtils.FieldReferenceFinder(), null);
 

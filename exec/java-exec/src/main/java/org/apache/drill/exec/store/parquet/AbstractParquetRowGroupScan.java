@@ -22,12 +22,12 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.drill.common.expression.LogicalExpression;
 import org.apache.drill.common.expression.SchemaPath;
+import org.apache.drill.exec.expr.FilterPredicate;
 import org.apache.drill.exec.physical.base.AbstractBase;
 import org.apache.drill.exec.physical.base.GroupScan;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.physical.base.PhysicalVisitor;
 import org.apache.drill.exec.physical.base.SubScan;
-import org.apache.drill.exec.record.metadata.TupleSchema;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
@@ -43,7 +43,7 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
   protected final ParquetReaderConfig readerConfig;
   protected final LogicalExpression filter;
   protected final Path selectionRoot;
-  protected final TupleSchema tupleSchema;
+  protected final FilterPredicate runtimeFilterPredicate;
 
   protected AbstractParquetRowGroupScan(String userName,
                                      List<RowGroupReadEntry> rowGroupReadEntries,
@@ -51,14 +51,15 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
                                      ParquetReaderConfig readerConfig,
                                      LogicalExpression filter,
                                      Path selectionRoot,
-                                     TupleSchema tupleSchema) {
+                                     FilterPredicate runtimeFilterPredicate) {
     super(userName);
     this.rowGroupReadEntries = rowGroupReadEntries;
     this.columns = columns == null ? GroupScan.ALL_COLUMNS : columns;
     this.readerConfig = readerConfig == null ? ParquetReaderConfig.getDefaultInstance() : readerConfig;
     this.filter = filter;
     this.selectionRoot = selectionRoot;
-    this.tupleSchema = tupleSchema;
+    this.runtimeFilterPredicate = runtimeFilterPredicate;
+
   }
 
   @JsonProperty
@@ -88,6 +89,9 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
     return filter;
   }
 
+  @JsonProperty
+  public FilterPredicate getRuntimeFilterPredicate() { return runtimeFilterPredicate; }
+
   @Override
   public boolean isExecutable() {
     return false;
@@ -107,9 +111,6 @@ public abstract class AbstractParquetRowGroupScan extends AbstractBase implement
   public Path getSelectionRoot() {
     return selectionRoot;
   }
-
-  @JsonProperty
-  public TupleSchema getTupleSchema() { return tupleSchema; }
 
   public abstract AbstractParquetRowGroupScan copy(List<SchemaPath> columns);
   @JsonIgnore

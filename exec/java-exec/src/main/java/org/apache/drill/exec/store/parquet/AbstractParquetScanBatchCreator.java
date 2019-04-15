@@ -21,10 +21,7 @@ import org.apache.drill.common.expression.LogicalExpression;
 import org.apache.drill.common.expression.SchemaPath;
 import org.apache.drill.common.expression.ValueExpressions;
 import org.apache.drill.exec.expr.FilterPredicate;
-import org.apache.drill.exec.expr.fn.FunctionImplementationRegistry;
 import org.apache.drill.exec.expr.stat.RowsMatch;
-import org.apache.drill.exec.physical.base.AbstractGroupScanWithMetadata;
-import org.apache.drill.exec.record.metadata.TupleSchema;
 import org.apache.drill.exec.store.dfs.FileSelection;
 import org.apache.drill.exec.store.parquet.metadata.Metadata;
 import org.apache.drill.exec.store.parquet.metadata.MetadataBase;
@@ -88,7 +85,6 @@ public abstract class AbstractParquetScanBatchCreator {
     RowGroupReadEntry firstRowGroup = null; // to be scanned in case ALL row groups are pruned out
     ParquetMetadata firstFooter = null;
     long rowgroupsPruned = 0; // for stats
-    TupleSchema tupleSchema = rowGroupScan.getTupleSchema();
 
     try {
 
@@ -108,10 +104,8 @@ public abstract class AbstractParquetScanBatchCreator {
 
       // If pruning - Prepare the predicate and the columns before the FOR LOOP
       if ( doRuntimePruning ) {
-        filterPredicate = AbstractGroupScanWithMetadata.getFilterPredicate(filterExpr, context,
-          (FunctionImplementationRegistry) context.getFunctionRegistry(), context.getOptions(), true,
-          true /* supports file implicit columns */,
-          tupleSchema);
+        filterPredicate = rowGroupScan.getRuntimeFilterPredicate();
+
         // Extract only the relevant columns from the filter (sans implicit columns, if any)
         schemaPathsInExpr = filterExpr.accept(new FilterEvaluatorUtils.FieldReferenceFinder(), null);
         columnsInExpr = new HashSet<>();

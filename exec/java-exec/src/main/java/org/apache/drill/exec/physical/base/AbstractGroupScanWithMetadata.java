@@ -44,7 +44,6 @@ import org.apache.drill.exec.server.options.OptionManager;
 import org.apache.drill.exec.store.ColumnExplorer;
 import org.apache.drill.exec.store.dfs.FileSelection;
 import org.apache.drill.exec.store.parquet.FilterEvaluatorUtils;
-// import org.apache.drill.exec.store.parquet.ParquetGroupScan;
 import org.apache.drill.exec.store.parquet.ParquetTableMetadataUtils;
 import org.apache.drill.metastore.BaseMetadata;
 import org.apache.drill.metastore.ColumnStatistics;
@@ -89,6 +88,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
   protected List<SchemaPath> partitionColumns;
   protected LogicalExpression filter;
   protected List<SchemaPath> columns;
+  protected FilterPredicate runtimeFilterPredicate;
 
   protected Map<Path, FileMetadata> files;
 
@@ -108,6 +108,7 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
     super(that.getUserName());
     this.columns = that.columns;
     this.filter = that.filter;
+    this.runtimeFilterPredicate = that.runtimeFilterPredicate;
     this.matchAllMetadata = that.matchAllMetadata;
 
     this.metadataProvider = that.metadataProvider;
@@ -196,6 +197,9 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
     this.filter = filter;
   }
 
+  public void setRuntimeFilterPredicate(FilterPredicate runtimeFilterPredicate) {
+    this.runtimeFilterPredicate = runtimeFilterPredicate;
+  }
   /**
    *  Set the filter - thus enabling runtime rowgroup pruning
    *  The runtime pruning can be disabled with an option.
@@ -205,7 +209,9 @@ public abstract class AbstractGroupScanWithMetadata extends AbstractFileGroupSca
   public void setFilterForRuntime(LogicalExpression filterExpr, OptimizerRulesContext optimizerContext) {
     OptionManager options = optimizerContext.getPlannerSettings().getOptions();
     boolean skipRuntimePruning = options.getBoolean(SKIP_RUNTIME_ROWGROUP_PRUNING_KEY); // if option is set to disable runtime pruning
-    if ( ! skipRuntimePruning ) { setFilter(filterExpr); }
+    if ( ! skipRuntimePruning ) {
+      setFilter(filterExpr);
+    }
   }
 
   @Override

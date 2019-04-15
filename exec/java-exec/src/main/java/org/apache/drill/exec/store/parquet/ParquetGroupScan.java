@@ -207,7 +207,8 @@ public class ParquetGroupScan extends AbstractParquetGroupScan {
   @Override
   public ParquetRowGroupScan getSpecificScan(int minorFragmentId) {
     return new ParquetRowGroupScan(getUserName(), formatPlugin, getReadEntries(minorFragmentId), columns, readerConfig, selectionRoot, filter,
-      tableMetadata == null ? null : (TupleSchema) tableMetadata.getSchema());
+            runtimeFilterPredicate);
+
   }
 
   @Override
