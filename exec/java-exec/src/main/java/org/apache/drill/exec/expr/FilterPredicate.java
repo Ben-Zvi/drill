@@ -17,8 +17,17 @@
  */
 package org.apache.drill.exec.expr;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import org.apache.drill.exec.expr.stat.RowsMatch;
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY,
+  property = "filterpredicate")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = ComparisonPredicate.class, name="comparison-predicate"),
+  @JsonSubTypes.Type(value = BooleanPredicate.class, name="boolean-predicate"),
+  @JsonSubTypes.Type(value = IsPredicate.class, name="is-predicate")
+})
 public interface FilterPredicate<T extends Comparable<T>> {
   RowsMatch matches(StatisticsProvider<T> evaluator);
 }

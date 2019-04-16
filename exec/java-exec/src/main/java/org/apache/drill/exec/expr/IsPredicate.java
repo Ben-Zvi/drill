@@ -17,6 +17,8 @@
  */
 package org.apache.drill.exec.expr;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import org.apache.drill.exec.expr.stat.RowsMatch;
 import org.apache.drill.exec.physical.base.GroupScan;
 import org.apache.drill.metastore.ColumnStatistics;
@@ -33,14 +35,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.function.BiFunction;
 
+@JsonTypeName("is-predicate")
 public class IsPredicate<C extends Comparable<C>> extends LogicalExpressionBase implements FilterPredicate<C> {
 
   private final LogicalExpression expr;
 
   private final BiFunction<ColumnStatistics<C>, StatisticsProvider<C>, RowsMatch> predicate;
 
-  private IsPredicate(LogicalExpression expr,
-                      BiFunction<ColumnStatistics<C>, StatisticsProvider<C>, RowsMatch> predicate) {
+  public IsPredicate(@JsonProperty("expr") LogicalExpression expr,
+                      @JsonProperty("predicate") BiFunction<ColumnStatistics<C>, StatisticsProvider<C>, RowsMatch> predicate) {
     super(expr.getPosition());
     this.expr = expr;
     this.predicate = predicate;

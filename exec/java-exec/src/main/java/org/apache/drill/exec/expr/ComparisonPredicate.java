@@ -17,6 +17,9 @@
  */
 package org.apache.drill.exec.expr;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import org.apache.drill.common.expression.LogicalExpression;
 import org.apache.drill.common.expression.LogicalExpressionBase;
 import org.apache.drill.common.expression.visitors.ExprVisitor;
@@ -38,6 +41,7 @@ import java.util.function.BiFunction;
 /**
  * Comparison predicates for metadata filter pushdown.
  */
+@JsonTypeName("comparison-predicate")
 public class ComparisonPredicate<C extends Comparable<C>> extends LogicalExpressionBase implements FilterPredicate<C> {
 
   private final LogicalExpression left;
@@ -45,8 +49,9 @@ public class ComparisonPredicate<C extends Comparable<C>> extends LogicalExpress
 
   private final BiFunction<ColumnStatistics<C>, ColumnStatistics<C>, RowsMatch> predicate;
 
-  private ComparisonPredicate(LogicalExpression left,
-                              LogicalExpression right,
+  @JsonCreator
+  public ComparisonPredicate(@JsonProperty("left") LogicalExpression left,
+                              @JsonProperty("right") LogicalExpression right,
                               BiFunction<ColumnStatistics<C>, ColumnStatistics<C>, RowsMatch> predicate) {
     super(left.getPosition());
     this.left = left;

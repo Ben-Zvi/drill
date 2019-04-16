@@ -19,6 +19,8 @@ package org.apache.drill.common.expression;
 
 import java.io.IOException;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.jsontype.TypeSerializer;
 import org.apache.drill.common.config.DrillConfig;
 import org.apache.drill.common.expression.visitors.ExprVisitor;
 import org.apache.drill.common.parser.LogicalExpressionParser;
@@ -82,6 +84,14 @@ public interface LogicalExpression extends Iterable<LogicalExpression>{
       ExpressionStringBuilder esb = new ExpressionStringBuilder();
       value.accept(esb, sb);
       jgen.writeString(sb.toString());
+    }
+
+    @Override
+    public void serializeWithType(LogicalExpression value, JsonGenerator jgen, SerializerProvider provider,
+                                  TypeSerializer typeSer) throws IOException, JsonProcessingException {
+      typeSer.writeTypePrefixForObject(value, jgen);
+      serialize(value, jgen, provider);
+      typeSer.writeTypeSuffixForObject(value, jgen);
     }
   }
 }
