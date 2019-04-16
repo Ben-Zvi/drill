@@ -202,7 +202,7 @@ public abstract class AbstractParquetScanBatchCreator {
           }
 
           mapWithMaxColumns = createReaderAndImplicitColumns(context, rowGroupScan, oContext, columnExplorer, readers, implicitColumns, mapWithMaxColumns, rowGroup,
-           fs, footer /*, false */);
+           fs, footer, false);
       }
 
       // in case all row groups were pruned out - create a single reader for the first one (so that the schema could be returned)
@@ -210,7 +210,7 @@ public abstract class AbstractParquetScanBatchCreator {
         logger.trace("All row groups were pruned out. Returning the first: {} (row count {}) for its schema", firstRowGroup.getPath(), firstRowGroup.getNumRecordsToRead());
         DrillFileSystem fs = fsManager.get(rowGroupScan.getFsConf(firstRowGroup), firstRowGroup.getPath());
         mapWithMaxColumns = createReaderAndImplicitColumns(context, rowGroupScan, oContext, columnExplorer, readers, implicitColumns, mapWithMaxColumns, firstRowGroup, fs,
-          firstFooter /*, true */);
+          firstFooter, true);
       }
 
       // Update stats (same in every reader - the others would just overwrite the stats)
@@ -258,8 +258,8 @@ public abstract class AbstractParquetScanBatchCreator {
                                                              Map<String, String> mapWithMaxColumns,
                                                              RowGroupReadEntry rowGroup,
                                                              DrillFileSystem fs,
-                                                             ParquetMetadata footer
-                                                             // ,boolean readSchemaOnly -- TODO:
+                                                             ParquetMetadata footer,
+                                                             boolean readSchemaOnly
   ) {
     ParquetReaderConfig readerConfig = rowGroupScan.getReaderConfig();
     ParquetReaderUtility.DateCorruptionStatus containsCorruptDates = ParquetReaderUtility.detectCorruptDates(footer,
@@ -283,7 +283,7 @@ public abstract class AbstractParquetScanBatchCreator {
       reader = new ParquetRecordReader(context,
           rowGroup.getPath(),
           rowGroup.getRowGroupIndex(),
-          rowGroup.getNumRecordsToRead(), // TODO: if readSchemaOnly - then set to zero rows to read (currently breaks the ScanBatch)
+          readSchemaOnly ? 0 : rowGroup.getNumRecordsToRead(), // if readSchemaOnly - then set to zero rows to read
           fs,
           CodecFactory.createDirectCodecFactory(fs.getConf(), new ParquetDirectByteBufferAllocator(oContext.getAllocator()), 0),
           footer,
