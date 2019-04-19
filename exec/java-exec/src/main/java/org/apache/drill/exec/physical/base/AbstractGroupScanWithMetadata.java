@@ -44,7 +44,6 @@ import org.apache.drill.exec.server.options.OptionManager;
 import org.apache.drill.exec.store.ColumnExplorer;
 import org.apache.drill.exec.store.dfs.FileSelection;
 import org.apache.drill.exec.store.parquet.FilterEvaluatorUtils;
-// import org.apache.drill.exec.store.parquet.ParquetGroupScan;
 import org.apache.drill.exec.store.parquet.ParquetTableMetadataUtils;
 import org.apache.drill.metastore.BaseMetadata;
 import org.apache.drill.metastore.ColumnStatistics;
