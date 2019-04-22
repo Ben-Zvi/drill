@@ -20,7 +20,7 @@ package org.apache.drill.exec.store.parquet;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.drill.exec.ops.OperatorStats;
-import org.apache.drill.exec.store.parquet.columnreaders.ParquetRecordReader.Metric;
+import org.apache.drill.exec.store.CommonParquetRecordReader.Metric;
 import org.apache.hadoop.fs.Path;
 
 public class ParquetReaderStats {
